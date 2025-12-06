@@ -219,21 +219,21 @@ async function handleHealth(interaction) {
 async function handleHelp(interaction) {
   const channelExample = [
     '📌 INFORMATION (category)',
-    '  📢|#announcements — Channel_Manager updates & important news',
-    '  📜|#bot-info — Basic information about Channel_Manager',
+    '  📢│#announcements — Channel_Manager updates & important news',
+    '  📜│#bot-info — Basic information about Channel_Manager',
     '',
     '🎫 SUPPORT (category)',
-    '  🎫|#create-ticket — Open a support ticket',
-    '  ❓|#help — Ask simple questions to Support',
-    '  🐞|#bug-report — Report bugs or issues',
+    '  🎫│#create-ticket — Open a support ticket',
+    '  ❓│#help — Ask simple questions to Support',
+    '  🐞│#bug-report — Report bugs or issues',
     '',
     '💡 COMMUNITY (category)',
-    '  💭|#general — Chat with other Channel_Manager users',
-    '  ⭐|#showcase — Show your server builds/templates',
+    '  💭│#general — Chat with other Channel_Manager users',
+    '  ⭐│#showcase — Show your server builds/templates',
     '',
     '📊 LOGS (staff only) (category)',
-    '  📝|#ticket-log — All opened/closed tickets',
-    '  🤖|#bot-log — Bot activity & system messages'
+    '  📝│#ticket-log — All opened/closed tickets',
+    '  🤖│#bot-log — Bot activity & system messages'
   ].join('\n');
 
   const rolesBlock = [

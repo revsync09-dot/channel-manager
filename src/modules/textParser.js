@@ -21,7 +21,7 @@ export function parseTextStructure(raw) {
 
     const trimmed = normalizeLine(line.trim());
     const isChannel = looksLikeChannel(trimmed);
-    const isCategory = !isChannel && !trimmed.startsWith('-');
+    const isCategory = isCategoryLine(trimmed) || (!isChannel && !trimmed.startsWith('-'));
 
     if (isCategory) {
       currentCategory = { name: cleanCategoryName(trimmed), channels: [] };
@@ -251,7 +251,12 @@ function permissionsToBitfield(perms) {
 }
 
 function normalizeLine(str) {
-  return str.replace(/\u200b/g, '').replace(/[│¦]/g, '|').replace(/[–—]/g, '-');
+  return str
+    .replace(/\ufeff/g, '')
+    .replace(/\u200b/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[│┃┆┊┇┋｜¦]/g, '|')
+    .replace(/[–—]/g, '-');
 }
 
 function extractTopic(line) {
@@ -260,4 +265,8 @@ function extractTopic(line) {
     return dashMatch[1].trim();
   }
   return null;
+}
+
+function isCategoryLine(line) {
+  return /\(category\)/i.test(line);
 }
