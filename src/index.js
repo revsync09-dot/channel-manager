@@ -18,6 +18,7 @@ import {
 import { analyzeImageStub } from './modules/imageAnalyzer.js';
 import { parseTextStructure } from './modules/textParser.js';
 import { buildServerFromTemplate } from './modules/serverBuilder.js';
+import { sendTicketPanel, handleTicketButton, handleTicketModal } from './modules/ticketSystem.js';
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -39,7 +40,8 @@ const commands = [
   new SlashCommandBuilder().setName('health').setDescription('Show bot status.'),
   new SlashCommandBuilder().setName('help').setDescription('Show a short help message.'),
   new SlashCommandBuilder().setName('delete_channel').setDescription('Delete all channels and categories in this server.'),
-  new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).')
+  new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).'),
+  new SlashCommandBuilder().setName('ticketpanel').setDescription('Post the ticket panel (only allowed in the ticket channel).')
 ];
 
 async function registerCommands() {
@@ -99,6 +101,9 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'delete_roles') {
       return handleDeleteRoles(interaction);
     }
+    if (interaction.commandName === 'ticketpanel') {
+      return sendTicketPanel(interaction);
+    }
     if (interaction.commandName === 'setup') {
       return showSetupPanel(interaction);
     }
@@ -108,7 +113,13 @@ client.on('interactionCreate', async interaction => {
     return handleSelect(interaction);
   }
   if (interaction.isModalSubmit()) {
+    const handled = await handleTicketModal(interaction, client);
+    if (handled) return;
     return handleModal(interaction);
+  }
+  if (interaction.isButton()) {
+    const handled = await handleTicketButton(interaction);
+    if (handled) return;
   }
 });
 
@@ -201,20 +212,36 @@ async function handleSelect(interaction) {
 }
 
 async function handleHealth(interaction) {
-  const status = client.ws.status;
-  const ping = Math.round(client.ws.ping);
+  const statusMap = ['READY', 'CONNECTING', 'RECONNECTING', 'IDLE', 'NEARLY', 'DISCONNECTED'];
+  const status = statusMap[client.ws.status] ?? String(client.ws.status);
+  const ping = Math.max(0, Math.round(client.ws.ping));
   const guildCount = client.guilds.cache.size;
+  const channelCount = client.channels.cache?.size ?? 0;
+  const uptimeMs = Date.now() - (client.readyTimestamp ?? Date.now());
+  const mem = process.memoryUsage();
+  const formatUptime = ms => {
+    const totalSec = Math.floor(ms / 1000);
+    const d = Math.floor(totalSec / 86400);
+    const h = Math.floor((totalSec % 86400) / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return `${d}d ${h}h ${m}m ${s}s`;
+  };
 
   const embed = new EmbedBuilder()
-    .setTitle('Bot Status')
+    .setTitle('Channel Manager Health')
     .setColor(EMBED_COLOR)
     .setThumbnail(EMBED_THUMB)
     .addFields(
-      { name: 'Status', value: status === 0 ? 'READY' : String(status), inline: true },
+      { name: 'Status', value: status, inline: true },
       { name: 'Ping', value: `${ping} ms`, inline: true },
-      { name: 'Servers', value: `${guildCount}`, inline: true }
+      { name: 'Uptime', value: formatUptime(uptimeMs), inline: true },
+      { name: 'Servers', value: `${guildCount}`, inline: true },
+      { name: 'Channels (cached)', value: `${channelCount}`, inline: true },
+      { name: 'Memory', value: `${Math.round(mem.rss / 1024 / 1024)} MB RSS`, inline: true },
+      { name: 'Runtime', value: `Node ${process.version} | discord.js 14`, inline: false }
     )
-    .setFooter({ text: 'Channel Manager - status' })
+    .setFooter({ text: 'Channel Manager - system health' })
     .setTimestamp(new Date());
 
   return interaction.reply({ embeds: [embed], flags: 1 << 6 });
