@@ -4,7 +4,7 @@ import { PermissionsBitField } from 'discord.js';
 export function parseTextStructure(raw) {
   const lines = raw
     .split(/\r?\n/)
-    .map(l => l.trimEnd())
+    .map(l => normalizeLine(l.trimEnd()))
     .filter(Boolean);
 
   const template = { categories: [], roles: [] };
@@ -19,7 +19,7 @@ export function parseTextStructure(raw) {
       continue;
     }
 
-    const trimmed = line.trim();
+    const trimmed = normalizeLine(line.trim());
     const isChannel = looksLikeChannel(trimmed);
     const isCategory = !isChannel && !trimmed.startsWith('-');
 
@@ -47,19 +47,26 @@ export function parseTextStructure(raw) {
 }
 
 function looksLikeChannel(line) {
-  const hasPipe = line.includes('|');
-  const hasHash = line.trimStart().startsWith('#');
-  const hasType = /type:\s*(text|voice)/i.test(line);
-  const hasVoiceWord = /\bvoice\b/i.test(line);
+  const normalized = normalizeLine(line);
+  const hasPipe = normalized.includes('|');
+  const hasHash = /#\S+/.test(normalized);
+  const hasType = /type:\s*(text|voice)/i.test(normalized);
+  const hasVoiceWord = /\bvoice\b/i.test(normalized);
   return hasPipe || hasHash || hasType || hasVoiceWord;
 }
 
 function buildChannelFromLine(line) {
-  const isVoice = /type:\s*voice/i.test(line) || /\bvoice\b/i.test(line);
-  const withoutPrefix = line.replace(/^[-\s]+/, '');
-  const namePart = withoutPrefix.split('|')[0].replace(/^#/, '').trim();
+  const normalized = normalizeLine(line);
+  const isVoice = /type:\s*voice/i.test(normalized) || /\bvoice\b/i.test(normalized);
+  const withoutPrefix = normalized.replace(/^[-\s|]+/, '');
+  const hashMatch = normalized.match(/#([\w-]+)/);
+  let namePart = hashMatch ? hashMatch[1] : withoutPrefix.split('|')[0].replace(/^#/, '').trim();
+  if (!namePart) {
+    namePart = withoutPrefix.split(/\s+/)[0];
+  }
   const safeName = slugifyPreserve(namePart);
-  const perms = extractPermissions(line);
+  const topic = extractTopic(normalized) || suggestDescription(safeName, isVoice);
+  const perms = extractPermissions(normalized);
   const allowBits = perms.length > 0 ? permissionsToBitfield(perms).bitfield.toString() : undefined;
   const overwrites =
     allowBits !== undefined
@@ -75,19 +82,24 @@ function buildChannelFromLine(line) {
   return {
     name: safeName || 'channel',
     type: isVoice ? 'voice' : 'text',
-    topic: suggestDescription(safeName, isVoice),
+    topic,
     private: false,
     overwrites
   };
 }
 
 function cleanCategoryName(name) {
-  return name.replace(/[|#]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  const normalized = normalizeLine(name).replace(/\(category\)/i, '');
+  const noEmoji = normalized.replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s{2,}/g, ' ');
+  const clean = noEmoji.trim();
+  return clean || 'Category';
 }
 
 function slugifyPreserve(str) {
   if (!str) return 'channel';
-  return str.replace(/\s+/g, '-').replace(/-+/g, '-').toLowerCase();
+  const normalized = normalizeLine(str).replace(/[^\p{L}\p{N}\s_-]/gu, ' ');
+  const safe = normalized.replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  return safe.toLowerCase() || 'channel';
 }
 
 function suggestDescription(name, isVoice) {
@@ -236,4 +248,16 @@ function permissionsToBitfield(perms) {
     }
   }
   return new PermissionsBitField(mapped);
+}
+
+function normalizeLine(str) {
+  return str.replace(/\u200b/g, '').replace(/[│¦]/g, '|').replace(/[–—]/g, '-');
+}
+
+function extractTopic(line) {
+  const dashMatch = line.match(/-\s+(.+)/);
+  if (dashMatch) {
+    return dashMatch[1].trim();
+  }
+  return null;
 }
