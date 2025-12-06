@@ -38,7 +38,8 @@ const commands = [
   new SlashCommandBuilder().setName('setup').setDescription('Open the server builder panel.'),
   new SlashCommandBuilder().setName('health').setDescription('Show bot status.'),
   new SlashCommandBuilder().setName('help').setDescription('Show a short help message.'),
-  new SlashCommandBuilder().setName('delete').setDescription('Delete all channels, categories, and deletable roles.')
+  new SlashCommandBuilder().setName('delete_channel').setDescription('Delete all channels and categories in this server.'),
+  new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).')
 ];
 
 async function registerCommands() {
@@ -92,8 +93,11 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'help') {
       return handleHelp(interaction);
     }
-    if (interaction.commandName === 'delete') {
-      return handleDelete(interaction);
+    if (interaction.commandName === 'delete_channel') {
+      return handleDeleteChannels(interaction);
+    }
+    if (interaction.commandName === 'delete_roles') {
+      return handleDeleteRoles(interaction);
     }
     if (interaction.commandName === 'setup') {
       return showSetupPanel(interaction);
@@ -268,16 +272,14 @@ async function handleHelp(interaction) {
   return interaction.reply({ embeds: [embed], flags: 1 << 6 });
 }
 
-async function handleDelete(interaction) {
+async function handleDeleteChannels(interaction) {
   if (!interaction.guild) {
     return interaction.reply({ content: 'Please run this inside a server.', flags: 1 << 6 });
   }
 
-  await interaction.reply({ content: 'Deleting all channels, categories, and roles (except @everyone/managed/unreachable)...', flags: 1 << 6 });
+  await interaction.reply({ content: 'Deleting all channels and categories...', flags: 1 << 6 });
 
   const guild = interaction.guild;
-  const me = guild.members.me ?? (await guild.members.fetchMe());
-  const myTopPos = me?.roles.highest?.position ?? 0;
 
   const channels = await guild.channels.fetch();
   let channelsDeleted = 0;
@@ -293,6 +295,21 @@ async function handleDelete(interaction) {
     }
   });
 
+  await Promise.allSettled(channelDeletes);
+  await interaction.editReply({ content: `Delete finished. Channels/categories removed: ${channelsDeleted}.` });
+}
+
+async function handleDeleteRoles(interaction) {
+  if (!interaction.guild) {
+    return interaction.reply({ content: 'Please run this inside a server.', flags: 1 << 6 });
+  }
+
+  await interaction.reply({ content: 'Deleting roles (skipping @everyone, managed, and above my role)...', flags: 1 << 6 });
+
+  const guild = interaction.guild;
+  const me = guild.members.me ?? (await guild.members.fetchMe());
+  const myTopPos = me?.roles.highest?.position ?? 0;
+
   const roles = await guild.roles.fetch();
   let rolesDeleted = 0;
   const roleDeletes = [];
@@ -302,14 +319,14 @@ async function handleDelete(interaction) {
     if (role.managed) return;
     if (role.position >= myTopPos) return;
     roleDeletes.push(
-      role.delete('Requested by /delete').then(() => {
+      role.delete('Requested by /delete_roles').then(() => {
         rolesDeleted += 1;
       })
     );
   });
 
-  await Promise.allSettled([...channelDeletes, ...roleDeletes]);
-  await interaction.editReply({ content: `Delete finished. Channels/categories removed: ${channelsDeleted}. Roles removed: ${rolesDeleted}.` });
+  await Promise.allSettled(roleDeletes);
+  await interaction.editReply({ content: `Delete finished. Roles removed: ${rolesDeleted}.` });
 }
 
 async function handleModal(interaction) {
