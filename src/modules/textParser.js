@@ -60,11 +60,22 @@ function buildChannelFromLine(line) {
   const isVoice = /type:\s*voice/i.test(normalized) || /\bvoice\b/i.test(normalized);
   const withoutPrefix = normalized.replace(/^[-\s|]+/, '');
   const hashMatch = normalized.match(/#([\w-]+)/);
-  let namePart = hashMatch ? hashMatch[1] : withoutPrefix.split('|')[0].replace(/^#/, '').trim();
-  if (!namePart) {
-    namePart = withoutPrefix.split(/\s+/)[0];
+  const prefixBeforeHash =
+    hashMatch && typeof hashMatch.index === 'number'
+      ? normalized
+          .slice(0, hashMatch.index)
+          .replace(/[|]/g, ' ')
+          .trim()
+      : '';
+  let baseName = hashMatch ? hashMatch[1] : withoutPrefix.split('|')[0].replace(/^#/, '').trim();
+  if (!baseName) {
+    baseName = withoutPrefix.split(/\s+/)[0];
   }
-  const safeName = slugifyPreserve(namePart);
+  const namePart = prefixBeforeHash ? `${prefixBeforeHash}-${baseName}` : baseName;
+  if (!namePart) {
+    baseName = withoutPrefix.split(/\s+/)[0];
+  }
+  const safeName = slugifyPreserve(namePart || baseName);
   const topic = extractTopic(normalized) || suggestDescription(safeName, isVoice);
   const perms = extractPermissions(normalized);
   const allowBits = perms.length > 0 ? permissionsToBitfield(perms).bitfield.toString() : undefined;
@@ -90,15 +101,16 @@ function buildChannelFromLine(line) {
 
 function cleanCategoryName(name) {
   const normalized = normalizeLine(name).replace(/\(category\)/i, '');
-  const noEmoji = normalized.replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s{2,}/g, ' ');
-  const clean = noEmoji.trim();
+  const noPipes = normalized.replace(/[|#]/g, ' ').replace(/\s{2,}/g, ' ');
+  const clean = noPipes.trim();
   return clean || 'Category';
 }
 
 function slugifyPreserve(str) {
   if (!str) return 'channel';
-  const normalized = normalizeLine(str).replace(/[^\p{L}\p{N}\s_-]/gu, ' ');
-  const safe = normalized.replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  const normalized = normalizeLine(str).trim();
+  const spaced = normalized.replace(/[|]/g, ' ').replace(/\s+/g, ' ');
+  const safe = spaced.replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
   return safe.toLowerCase() || 'channel';
 }
 
@@ -255,6 +267,7 @@ function normalizeLine(str) {
     .replace(/\ufeff/g, '')
     .replace(/\u200b/g, '')
     .replace(/\u00a0/g, ' ')
+    .replace(/:([a-z0-9_+.-]+):/gi, '$1')
     .replace(/[│┃┆┊┇┋｜¦]/g, '|')
     .replace(/[–—]/g, '-');
 }
