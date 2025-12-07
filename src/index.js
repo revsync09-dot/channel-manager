@@ -18,8 +18,9 @@ import {
 import { analyzeImageStub } from './modules/imageAnalyzer.js';
 import { parseTextStructure } from './modules/textParser.js';
 import { buildServerFromTemplate } from './modules/serverBuilder.js';
-import { sendTicketPanel, handleTicketModal, handleTicketSelect } from './modules/ticketSystem.js';
+import { sendTicketPanel, handleTicketModal, handleTicketSelect, sendTicketPanelToChannel } from './modules/ticketSystem.js';
 import { startChangeLogger } from './modules/changeLogger.js';
+import { sendVerifyPanel, handleVerifyButton, getVerifyRoleId, sendVerifyPanelToChannel } from './modules/verifySystem.js';
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -29,7 +30,7 @@ if (!token || !clientId) {
   process.exit(1);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 const MAX_CHANNELS = 500;
 const MAX_ROLES = 200;
 const EMBED_COLOR = 0x22c55e;
@@ -41,8 +42,7 @@ const commands = [
   new SlashCommandBuilder().setName('health').setDescription('Show bot status.'),
   new SlashCommandBuilder().setName('help').setDescription('Show a short help message.'),
   new SlashCommandBuilder().setName('delete_channel').setDescription('Delete all channels and categories in this server.'),
-  new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).'),
-  new SlashCommandBuilder().setName('ticketpanel').setDescription('Post the ticket panel (main server only).')
+  new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).')
 ];
 
 async function registerCommands() {
@@ -58,6 +58,8 @@ async function registerCommands() {
 client.once('clientReady', () => {
   console.log(`Bot logged in as ${client.user?.tag || 'unknown'}`);
   startChangeLogger(client);
+  sendVerifyPanelToChannel(client).catch(() => {});
+  sendTicketPanelToChannel(client).catch(() => {});
 });
 
 client.on('guildCreate', async guild => {
@@ -91,6 +93,9 @@ client.on('guildCreate', async guild => {
 
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
+    if (!isOwnerOrAdmin(interaction)) {
+      return interaction.reply({ content: 'Only the server owner or admins can use this command.', flags: 1 << 6 });
+    }
     if (interaction.commandName === 'health') {
       return handleHealth(interaction);
     }
@@ -102,9 +107,6 @@ client.on('interactionCreate', async interaction => {
     }
     if (interaction.commandName === 'delete_roles') {
       return handleDeleteRoles(interaction);
-    }
-    if (interaction.commandName === 'ticketpanel') {
-      return sendTicketPanel(interaction);
     }
     if (interaction.commandName === 'setup') {
       return showSetupPanel(interaction);
@@ -120,6 +122,34 @@ client.on('interactionCreate', async interaction => {
     const ticketHandled = await handleTicketModal(interaction, client);
     if (ticketHandled) return;
     return handleModal(interaction);
+  }
+  if (interaction.isButton()) {
+    const verifyHandled = await handleVerifyButton(interaction);
+    if (verifyHandled) return;
+  }
+});
+
+client.on('messageCreate', async message => {
+  if (!message.guild || message.author.bot) return;
+  const verifyRoleId = getVerifyRoleId();
+  if (!verifyRoleId || verifyRoleId === 'SET_VERIFY_ROLE_ID') return;
+
+  const member = message.member;
+  if (!member) return;
+  if (member.roles.cache.has(verifyRoleId)) return;
+
+  // Block unverified users from sending messages
+  if (message.deletable) {
+    await message.delete().catch(() => {});
+  }
+
+  const notify = await message.channel
+    .send({ content: `${message.author}, please verify first using the verify button in the verification channel.` })
+    .catch(() => null);
+  if (notify) {
+    setTimeout(() => {
+      notify.delete().catch(() => {});
+    }, 5000);
   }
 });
 
@@ -551,6 +581,14 @@ function ensureTemplateSafe(template) {
   if (roleCount > MAX_ROLES) {
     throw new Error(`Too many roles (${roleCount}).`);
   }
+}
+
+function isOwnerOrAdmin(interaction) {
+  if (!interaction.guild) return false;
+  if (interaction.user.id === interaction.guild.ownerId) return true;
+  const member = interaction.member;
+  if (member?.permissions?.has(PermissionsBitField.Flags.Administrator)) return true;
+  return false;
 }
 
 registerCommands().catch(console.error);

@@ -58,6 +58,38 @@ export async function sendTicketPanel(interaction) {
   return interaction.reply({ content: `Ticket panel posted in ${panelChannel}.`, flags: 1 << 6 });
 }
 
+export async function sendTicketPanelToChannel(client) {
+  const guild = await client.guilds.fetch(ALLOWED_GUILD_ID).catch(() => null);
+  if (!guild) return;
+  const { panelChannel } = await resolveTargetChannels(guild);
+  if (!panelChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle('🎟️ Need Help?')
+    .setColor(EMBED_COLOR)
+    .setDescription(
+      ['Pick a category below and tell us what you need.', 'We will respond as soon as possible.'].join('\n')
+    )
+    .addFields(
+      { name: '🛟 Support', value: 'General help and questions', inline: true },
+      { name: '🐞 Bug Report', value: 'Report an issue or glitch', inline: true },
+      { name: '📌 Other', value: 'Everything else', inline: true }
+    )
+    .setFooter({ text: 'Channel Manager Tickets' });
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('ticket-select')
+    .setPlaceholder('Choose a ticket category...')
+    .addOptions(
+      { label: 'Support', value: 'Support', description: 'General help and questions', emoji: '🛟' },
+      { label: 'Bug Report', value: 'Bug Report', description: 'Report an issue', emoji: '🐞' },
+      { label: 'Other', value: 'Other', description: 'Anything else', emoji: '📌' }
+    );
+
+  const row = new ActionRowBuilder().addComponents(select);
+  await panelChannel.send({ embeds: [embed], components: [row] }).catch(() => {});
+}
+
 export async function handleTicketSelect(interaction) {
   if (interaction.customId !== 'ticket-select') return false;
   if (!interaction.guild || interaction.guild.id !== ALLOWED_GUILD_ID) {
@@ -118,9 +150,6 @@ export async function handleTicketModal(interaction, client) {
   }
 
   const openerId = interaction.user.id;
-  const ownerId = interaction.guild.ownerId;
-  const botId = client.user.id;
-
   const channelName = `ticket-${interaction.user.username}`.toLowerCase().replace(/\s+/g, '-').slice(0, 90);
 
   const ticketChannel = await interaction.guild.channels.create({
@@ -135,18 +164,12 @@ export async function handleTicketModal(interaction, client) {
       },
       {
         id: openerId,
+        type: 'member',
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
       },
       {
         id: TICKET_PING_ROLE_ID,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
-      },
-      {
-        id: ownerId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
-      },
-      {
-        id: botId,
+        type: 'role',
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
       }
     ]
