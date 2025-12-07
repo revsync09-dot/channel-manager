@@ -18,7 +18,7 @@ import {
 import { analyzeImageStub } from './modules/imageAnalyzer.js';
 import { parseTextStructure } from './modules/textParser.js';
 import { buildServerFromTemplate } from './modules/serverBuilder.js';
-import { sendTicketPanel, handleTicketButton, handleTicketModal } from './modules/ticketSystem.js';
+import { sendTicketPanel, handleTicketModal, handleTicketSelect } from './modules/ticketSystem.js';
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -41,7 +41,7 @@ const commands = [
   new SlashCommandBuilder().setName('help').setDescription('Show a short help message.'),
   new SlashCommandBuilder().setName('delete_channel').setDescription('Delete all channels and categories in this server.'),
   new SlashCommandBuilder().setName('delete_roles').setDescription('Delete all deletable roles (except @everyone/managed/above bot).'),
-  new SlashCommandBuilder().setName('ticketpanel').setDescription('Post the ticket panel (only allowed in the ticket channel).')
+  new SlashCommandBuilder().setName('ticketpanel').setDescription('Post the ticket panel (main server only).')
 ];
 
 async function registerCommands() {
@@ -54,7 +54,7 @@ async function registerCommands() {
   }
 }
 
-client.on('ready', () => {
+client.once('clientReady', () => {
   console.log(`Bot logged in as ${client.user?.tag || 'unknown'}`);
 });
 
@@ -110,16 +110,14 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.isStringSelectMenu()) {
+    const ticketHandled = await handleTicketSelect(interaction);
+    if (ticketHandled) return;
     return handleSelect(interaction);
   }
   if (interaction.isModalSubmit()) {
-    const handled = await handleTicketModal(interaction, client);
-    if (handled) return;
+    const ticketHandled = await handleTicketModal(interaction, client);
+    if (ticketHandled) return;
     return handleModal(interaction);
-  }
-  if (interaction.isButton()) {
-    const handled = await handleTicketButton(interaction);
-    if (handled) return;
   }
 });
 
