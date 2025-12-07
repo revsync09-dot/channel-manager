@@ -2,4 +2,4 @@
 
 This is made by
 
-Dudwig and Red_thz anybody claiming it's there's can result in legal or discord action.
+Dudwig and Red_thz and JThweb anybody claiming it's there's can result in legal or discord action.
