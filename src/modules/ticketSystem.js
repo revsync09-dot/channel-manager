@@ -30,7 +30,12 @@ export async function sendTicketPanel(interaction) {
   const embed = new EmbedBuilder()
     .setTitle('🎟️ Need Help?')
     .setColor(EMBED_COLOR)
-    .setDescription('Pick a category below and tell us what you need. We will respond as soon as possible.')
+    .setDescription(
+      [
+        'Pick a category below and tell us what you need.',
+        'We will respond as soon as possible.'
+      ].join('\n')
+    )
     .addFields(
       { name: '🛟 Support', value: 'General help and questions', inline: true },
       { name: '🐞 Bug Report', value: 'Report an issue or glitch', inline: true },
@@ -149,11 +154,13 @@ export async function handleTicketModal(interaction, client) {
 
   const pingRole = `<@&${TICKET_PING_ROLE_ID}>`;
   const embed = new EmbedBuilder()
-    .setTitle('New Ticket')
+    .setTitle('🎫 Ticket Opened')
     .setColor(EMBED_COLOR)
+    .setDescription('Thank you, we received your request and will be with you shortly.')
     .addFields(
-      { name: 'From', value: `${interaction.user} (${interaction.user.tag})`, inline: true },
+      { name: 'Requester', value: `${interaction.user} (${interaction.user.tag})`, inline: true },
       { name: 'Category', value: categoryInput, inline: true },
+      { name: 'Status', value: 'Open', inline: true },
       { name: 'Description', value: description.slice(0, 1024), inline: false }
     )
     .setTimestamp(new Date());

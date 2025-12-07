@@ -39,16 +39,17 @@ export function startChangeLogger(client, rootDir = process.cwd()) {
         acc[e.type] = (acc[e.type] || 0) + 1;
         const ext = normalizeExt(e.file);
         acc.ext[ext] = (acc.ext[ext] || 0) + 1;
+        acc.files[e.type].push(e.file);
         return acc;
       },
-      { add: 0, change: 0, unlink: 0, ext: {} }
+      { add: 0, change: 0, unlink: 0, ext: {}, files: { add: [], change: [], unlink: [] } }
     );
 
     const total = counts.add + counts.change + counts.unlink;
     const actions = [];
-    if (counts.add) actions.push(`${counts.add} new item${counts.add === 1 ? '' : 's'} added`);
-    if (counts.change) actions.push(`${counts.change} item${counts.change === 1 ? '' : 's'} updated`);
-    if (counts.unlink) actions.push(`${counts.unlink} item${counts.unlink === 1 ? '' : 's'} removed`);
+    if (counts.add) actions.push(`added ${counts.add}`);
+    if (counts.change) actions.push(`updated ${counts.change}`);
+    if (counts.unlink) actions.push(`removed ${counts.unlink}`);
 
     const topExts = Object.entries(counts.ext)
       .sort((a, b) => b[1] - a[1])
@@ -59,14 +60,11 @@ export function startChangeLogger(client, rootDir = process.cwd()) {
       })
       .join(', ');
 
-    const sentenceParts = [];
-    sentenceParts.push(total ? `Workspace touched ${total} item${total === 1 ? '' : 's'}.` : 'No recent changes logged.');
-    if (actions.length) sentenceParts.push(actions.join(', ') + '.');
-    if (topExts) sentenceParts.push(`Highlights: ${topExts}.`);
+    const headline = total
+      ? `Workspace touched ${total} item${total === 1 ? '' : 's'} (${actions.join(', ')}).`
+      : 'No recent changes logged.';
 
-    const description = sentenceParts.join(' ');
-
-    return { counts, description };
+    return { counts, headline, topExts, files: counts.files };
   };
 
   const flush = async () => {
@@ -78,18 +76,27 @@ export function startChangeLogger(client, rootDir = process.cwd()) {
     const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
 
-    const { counts, description } = summarize(events);
+    const { counts, headline, topExts, files } = summarize(events);
+
+    const formatList = arr => {
+      if (!arr.length) return '—';
+      const sliced = arr.slice(0, 8);
+      const more = arr.length > 8 ? `\n… +${arr.length - 8} more` : '';
+      return sliced.map(f => `• \`${f}\``).join('\n') + more;
+    };
+
+    const fields = [
+      { name: '🟢 Added', value: formatList(files.add), inline: false },
+      { name: '🟠 Updated', value: formatList(files.change), inline: false },
+      { name: '🔴 Removed', value: formatList(files.unlink), inline: false }
+    ];
 
     const embed = new EmbedBuilder()
-      .setTitle('Workspace update')
+      .setTitle('🛰️ Workspace Update')
       .setColor(EMBED_COLOR)
-      .setDescription(description)
-      .addFields(
-        { name: 'Added', value: String(counts.add || 0), inline: true },
-        { name: 'Updated', value: String(counts.change || 0), inline: true },
-        { name: 'Removed', value: String(counts.unlink || 0), inline: true }
-      )
-      .setFooter({ text: 'Auto change log' })
+      .setDescription([headline, topExts ? `Highlights: ${topExts}.` : null].filter(Boolean).join('\n'))
+      .addFields(fields)
+      .setFooter({ text: 'Automated change log • Channel Manager' })
       .setTimestamp(new Date());
 
     await channel.send({ embeds: [embed] }).catch(() => null);
