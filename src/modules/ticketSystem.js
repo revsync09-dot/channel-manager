@@ -28,16 +28,13 @@ export async function sendTicketPanel(interaction) {
   }
 
   const embed = new EmbedBuilder()
-    .setTitle('Need Help? Open a Ticket')
+    .setTitle('🎟️ Need Help?')
     .setColor(EMBED_COLOR)
-    .setDescription(
-      [
-        'Select a category and submit your request. Our team will respond ASAP.',
-        '• 🛟 Support — General help and questions',
-        '• 🐞 Bug Report — Report an issue',
-        '• 💳 Billing — Payments and invoices',
-        '• 📌 Other — Anything else'
-      ].join('\n')
+    .setDescription('Pick a category below and tell us what you need. We will respond as soon as possible.')
+    .addFields(
+      { name: '🛟 Support', value: 'General help and questions', inline: true },
+      { name: '🐞 Bug Report', value: 'Report an issue or glitch', inline: true },
+      { name: '📌 Other', value: 'Everything else', inline: true }
     )
     .setFooter({ text: 'Channel Manager Tickets' });
 
@@ -47,7 +44,6 @@ export async function sendTicketPanel(interaction) {
     .addOptions(
       { label: 'Support', value: 'Support', description: 'General help and questions', emoji: '🛟' },
       { label: 'Bug Report', value: 'Bug Report', description: 'Report an issue', emoji: '🐞' },
-      { label: 'Billing', value: 'Billing', description: 'Payments and invoices', emoji: '💳' },
       { label: 'Other', value: 'Other', description: 'Anything else', emoji: '📌' }
     );
 

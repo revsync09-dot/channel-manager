@@ -19,6 +19,7 @@ import { analyzeImageStub } from './modules/imageAnalyzer.js';
 import { parseTextStructure } from './modules/textParser.js';
 import { buildServerFromTemplate } from './modules/serverBuilder.js';
 import { sendTicketPanel, handleTicketModal, handleTicketSelect } from './modules/ticketSystem.js';
+import { startChangeLogger } from './modules/changeLogger.js';
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -56,6 +57,7 @@ async function registerCommands() {
 
 client.once('clientReady', () => {
   console.log(`Bot logged in as ${client.user?.tag || 'unknown'}`);
+  startChangeLogger(client);
 });
 
 client.on('guildCreate', async guild => {

@@ -1,0 +1,46 @@
+name: Discord Change Log
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build payload
+        id: payload
+        run: |
+          commits=$(jq -c '[.commits[] | {id: .id, message: .message, url: .url, author: .author.username}]' "$GITHUB_EVENT_PATH")
+          commit_count=$(echo "$commits" | jq 'length')
+          head_msg=$(echo "$commits" | jq -r '.[0].message // "Update"')
+          cat <<EOF > payload.json
+          {
+            "username": "Channel Manager Bot",
+            "embeds": [
+              {
+                "title": "${{ github.repository }} @ ${{ github.ref_name }}",
+                "description": "Event: ${{ github.event_name }} on ${{ github.ref_name }}",
+                "color": 2279285,
+                "fields": [
+                  { "name": "Commits", "value": "$commit_count", "inline": true },
+                  { "name": "Head", "value": "$head_msg", "inline": true },
+                  { "name": "By", "value": "${{ github.actor }}", "inline": true }
+                ],
+                "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              }
+            ]
+          }
+          EOF
+      - name: Send to Discord
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "No DISCORD_WEBHOOK_URL secret set; skipping notification."
+            exit 0
+          fi
+          curl -X POST -H "Content-Type: application/json" -d @payload.json "$WEBHOOK_URL"
