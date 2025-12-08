@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ guild.name }} - Channel Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style_enhanced.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-layout">
+        <nav class="dashboard-nav">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <a href="{{ url_for('dashboard') }}" class="back-link">← Back</a>
+                    {% if guild.icon %}
+                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="nav-logo">
+                    {% endif %}
+                    <span class="nav-title">{{ guild.name }}</span>
+                </div>
+                <div class="nav-user">
+                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="user-avatar">
+                    <span class="user-name">{{ user.username }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Logout</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-sidebar">
+            <div class="sidebar-section">
+                <button class="sidebar-item active" data-section="overview">
+                    <span class="sidebar-icon">📊</span>
+                    Overview
+                </button>
+                <button class="sidebar-item" data-section="setup">
+                    <span class="sidebar-icon">🚀</span>
+                    Server Setup
+                </button>
+                <button class="sidebar-item" data-section="custom-commands">
+                    <span class="sidebar-icon">⚙️</span>
+                    Custom Commands
+                </button>
+                <button class="sidebar-item" data-section="embed-maker">
+                    <span class="sidebar-icon">📝</span>
+                    Embed Maker
+                </button>
+                <button class="sidebar-item" data-section="announcements">
+                    <span class="sidebar-icon">📢</span>
+                    Announcements
+                </button>
+                <button class="sidebar-item" data-section="roles">
+                    <span class="sidebar-icon">🎭</span>
+                    Roles
+                </button>
+                <button class="sidebar-item" data-section="appearance">
+                    <span class="sidebar-icon">🎨</span>
+                    Appearance
+                </button>
+                <button class="sidebar-item" data-section="ticketing">
+                    <span class="sidebar-icon">🎫</span>
+                    Ticketing
+                </button>
+                <button class="sidebar-item" data-section="economy">
+                    <span class="sidebar-icon">💰</span>
+                    Economy
+                </button>
+                <button class="sidebar-item" data-section="leveling">
+                    <span class="sidebar-icon">📊</span>
+                    Leveling
+                </button>
+                <button class="sidebar-item" data-section="giveaways">
+                    <span class="sidebar-icon">🎉</span>
+                    Giveaways
+                </button>
+                <button class="sidebar-item" data-section="moderation">
+                    <span class="sidebar-icon">🔨</span>
+                    Moderation
+                </button>
+                <button class="sidebar-item" data-section="reaction-roles">
+                    <span class="sidebar-icon">✨</span>
+                    Reaction Roles
+                </button>
+                <button class="sidebar-item" data-section="welcome">
+                    <span class="sidebar-icon">👋</span>
+                    Welcome/Leave
+                </button>
+                <button class="sidebar-item" data-section="settings">
+                    <span class="sidebar-icon">⚙️</span>
+                    Settings
+                </button>
+            </div>
+        </div>
+
+        <div class="dashboard-main">
+            <div class="container">
+                <!-- Overview Section -->
+                <div id="overview-section" class="dashboard-section active">
+                    <h2 class="section-title">Server Overview</h2>
+                    
+                    <div class="card invite-card">
+                        <h3>🤖 Add Bot to Server</h3>
+                        <p>Haven't added the bot yet? Click below to invite it with all necessary permissions.</p>
+                        <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.bot_client_id or 'YOUR_BOT_CLIENT_ID' }}&permissions=8&scope=bot%20applications.commands" 
+                           target="_blank" class="btn btn-primary">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                            </svg>
+                            Invite Bot to Server
+                        </a>
+                    </div>
+
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <div class="stat-label">Custom Commands</div>
+                            <div class="stat-value">{{ custom_commands|length }}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Prefix</div>
+                            <div class="stat-value">{{ config.prefix or '!' }}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Status</div>
+                            <div class="stat-value status-active">Active</div>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Quick Actions</h3>
+                        <div class="actions-grid">
+                            <button class="action-btn" onclick="switchSection('setup')">
+                                <span class="action-icon">🚀</span>
+                                Server Setup
+                            </button>
+                            <button class="action-btn" onclick="switchSection('custom-commands')">
+                                <span class="action-icon">⚙️</span>
+                                Manage Commands
+                            </button>
+                            <button class="action-btn" onclick="switchSection('embed-maker')">
+                                <span class="action-icon">📝</span>
+                                Create Embed
+                            </button>
+                            <button class="action-btn" onclick="switchSection('announcements')">
+                                <span class="action-icon">📢</span>
+                                Send Announcement
+                            </button>
+                            <button class="action-btn" onclick="switchSection('roles')">
+                                <span class="action-icon">🎭</span>
+                                Manage Roles
+                            </button>
+                            <button class="action-btn" onclick="switchSection('moderation')">
+                                <span class="action-icon">🔨</span>
+                                Moderation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Server Setup Section -->
+                <div id="setup-section" class="dashboard-section">
+                    <h2 class="section-title">Server Setup Templates</h2>
+                    
+                    <div class="card">
+                        <h3>Choose a Template</h3>
+                        <p>Select a pre-built server template to quickly set up your server structure.</p>
+                        
+                        <div class="template-grid">
+                            <div class="template-card" onclick="applyTemplate('gaming')">
+                                <div class="template-icon">🎮</div>
+                                <h4>Gaming Server</h4>
+                                <p>Perfect for gaming communities with voice channels, game categories, and LFG</p>
+                                <ul class="template-features">
+                                    <li>5 voice channels</li>
+                                    <li>Game-specific text channels</li>
+                                    <li>LFG and events channels</li>
+                                    <li>Gaming roles</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="template-card" onclick="applyTemplate('community')">
+                                <div class="template-icon">💬</div>
+                                <h4>Community Server</h4>
+                                <p>Great for general communities with discussions, events, and social channels</p>
+                                <ul class="template-features">
+                                    <li>Welcome and rules</li>
+                                    <li>Discussion channels</li>
+                                    <li>Events and announcements</li>
+                                    <li>Social features</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="template-card" onclick="applyTemplate('support')">
+                                <div class="template-icon">🎫</div>
+                                <h4>Support Server</h4>
+                                <p>Ideal for customer support with tickets, FAQ, and help channels</p>
+                                <ul class="template-features">
+                                    <li>Ticket system</li>
+                                    <li>FAQ channels</li>
+                                    <li>Support categories</li>
+                                    <li>Staff roles</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="template-card" onclick="applyTemplate('creative')">
+                                <div class="template-icon">🎨</div>
+                                <h4>Creative Server</h4>
+                                <p>For artists, writers, and creators to share and collaborate</p>
+                                <ul class="template-features">
+                                    <li>Showcase channels</li>
+                                    <li>Feedback forums</li>
+                                    <li>Collaboration areas</li>
+                                    <li>Creative roles</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Custom Setup</h3>
+                        <p>Or create your own custom server structure</p>
+                        <button class="btn btn-secondary" onclick="openCustomSetup()">Custom Setup</button>
+                    </div>
+                </div>
+
+                <!-- Custom Commands Section -->
+                <div id="custom-commands-section" class="dashboard-section">
+                    <h2 class="section-title">Custom Commands</h2>
+                    
+                    <div class="card">
+                        <h3>Create New Command</h3>
+                        <form id="create-command-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="cmd-name">Command Name</label>
+                                    <input type="text" id="cmd-name" placeholder="ping" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cmd-type">Type</label>
+                                    <select id="cmd-type">
+                                        <option value="text">Text Response</option>
+                                        <option value="embed">Embed Response</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cmd-response">Response</label>
+                                <textarea id="cmd-response" rows="4" placeholder="Pong! Bot is online." required></textarea>
+                                <small>Variables: {user}, {user.name}, {server}, {channel}, {membercount}</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="cmd-embed">
+                                    Send as embed
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Command</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>Existing Commands ({{ custom_commands|length }})</h3>
+                        <div id="commands-list">
+                            {% if custom_commands %}
+                                {% for cmd in custom_commands %}
+                                <div class="command-item">
+                                    <div class="command-info">
+                                        <span class="command-name">!{{ cmd.command_name }}</span>
+                                        <span class="command-response">{{ cmd.response[:50] }}{% if cmd.response|length > 50 %}...{% endif %}</span>
+                                    </div>
+                                    <div class="command-actions">
+                                        <button class="btn btn-small btn-secondary" onclick="editCommand('{{ cmd.command_name }}')">Edit</button>
+                                        <button class="btn btn-small btn-danger" onclick="deleteCommand('{{ cmd.command_name }}')">Delete</button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="empty-text">No custom commands yet. Create one above!</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Embed Maker Section -->
+                <div id="embed-maker-section" class="dashboard-section">
+                    <h2 class="section-title">Embed Maker</h2>
+                    
+                    <div class="embed-builder">
+                        <div class="embed-editor">
+                            <div class="card">
+                                <h3>Embed Editor</h3>
+                                
+                                <div class="form-group">
+                                    <label for="embed-title">Title</label>
+                                    <input type="text" id="embed-title" placeholder="Embed Title" oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-description">Description</label>
+                                    <textarea id="embed-description" rows="4" placeholder="Embed description..." oninput="updateEmbedPreview()"></textarea>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="embed-color">Color</label>
+                                        <input type="color" id="embed-color" value="#5865F2" oninput="updateEmbedPreview()">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="embed-timestamp">Add Timestamp</label>
+                                        <input type="checkbox" id="embed-timestamp" onchange="updateEmbedPreview()">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-author-name">Author Name</label>
+                                    <input type="text" id="embed-author-name" placeholder="Author name" oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-author-icon">Author Icon URL</label>
+                                    <input type="url" id="embed-author-icon" placeholder="https://..." oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-thumbnail">Thumbnail URL</label>
+                                    <input type="url" id="embed-thumbnail" placeholder="https://..." oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-image">Image URL</label>
+                                    <input type="url" id="embed-image" placeholder="https://..." oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-footer">Footer Text</label>
+                                    <input type="text" id="embed-footer" placeholder="Footer text" oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-footer-icon">Footer Icon URL</label>
+                                    <input type="url" id="embed-footer-icon" placeholder="https://..." oninput="updateEmbedPreview()">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="embed-channel">Send to Channel ID</label>
+                                    <input type="text" id="embed-channel" placeholder="Enter channel ID">
+                                </div>
+                                
+                                <button class="btn btn-primary" onclick="sendEmbed()">Send Embed</button>
+                                <button class="btn btn-secondary" onclick="exportEmbedJSON()">Export JSON</button>
+                            </div>
+                        </div>
+                        
+                        <div class="embed-preview-container">
+                            <div class="card">
+                                <h3>Live Preview</h3>
+                                <div id="embed-preview" class="embed-preview">
+                                    <div class="embed-message">
+                                        <!-- Preview will be rendered here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Announcements Section -->
+                <div id="announcements-section" class="dashboard-section">
+                    <h2 class="section-title">Announcements</h2>
+                    
+                    <div class="card">
+                        <h3>Send Announcement</h3>
+                        <form id="announcement-form">
+                            <div class="form-group">
+                                <label for="announcement-channel">Channel ID</label>
+                                <input type="text" id="announcement-channel" placeholder="Enter channel ID" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="announcement-type">Type</label>
+                                <select id="announcement-type">
+                                    <option value="normal">Normal Message</option>
+                                    <option value="embed">Embed</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="announcement-content">Content</label>
+                                <textarea id="announcement-content" rows="6" placeholder="Announcement message..." required></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="announcement-mention-everyone">
+                                    Mention @everyone
+                                </label>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Send Announcement</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Role Manager Section -->
+                <div id="roles-section" class="dashboard-section">
+                    <h2 class="section-title">🎭 Role Manager</h2>
+                    
+                    <div class="card">
+                        <h3>Quick Templates</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                            <button class="btn btn-secondary" onclick="applyRoleTemplate('gaming')">🎮 Gaming Roles</button>
+                            <button class="btn btn-secondary" onclick="applyRoleTemplate('staff')">👮 Staff Roles</button>
+                            <button class="btn btn-secondary" onclick="applyRoleTemplate('community')">🌟 Community Roles</button>
+                            <button class="btn btn-secondary" onclick="applyRoleTemplate('colors')">🌈 Color Roles</button>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Create New Role</h3>
+                        <form id="create-role-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="role-name">Role Name</label>
+                                    <input type="text" id="role-name" placeholder="Member" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="role-color">Color (Hex)</label>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <input type="color" id="role-color" value="#99AAB5" style="width: 60px; height: 40px;">
+                                        <input type="text" id="role-color-hex" value="#99AAB5" placeholder="#99AAB5" style="flex: 1;">
+                                        <div id="role-color-preview" style="width: 40px; height: 40px; border-radius: 5px; background: #99AAB5; border: 2px solid var(--border);"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Permissions</label>
+                                <div class="permissions-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="kick_members">
+                                        Kick Members
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="ban_members">
+                                        Ban Members
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="manage_channels">
+                                        Manage Channels
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="manage_roles">
+                                        Manage Roles
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="manage_messages">
+                                        Manage Messages
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" class="role-perm" value="mention_everyone">
+                                        Mention Everyone
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="role-hoist">
+                                    Display role members separately
+                                </label>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="role-mentionable">
+                                    Allow anyone to mention this role
+                                </label>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Create Role</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Bulk Role Creator</h3>
+                        <p>Create multiple roles at once</p>
+                        <div class="form-group">
+                            <label for="bulk-roles">Role Names (one per line)</label>
+                            <textarea id="bulk-roles" rows="6" placeholder="Member&#10;Moderator&#10;VIP&#10;Premium"></textarea>
+                        </div>
+                        <button class="btn btn-secondary" onclick="createBulkRoles()">Create All Roles</button>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Server Roles</h3>
+                        <div id="roles-list" style="max-height: 400px; overflow-y: auto;">
+                            <p>Loading roles...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Server Appearance Section -->
+                <div id="appearance-section" class="dashboard-section">
+                    <h2 class="section-title">🎨 Server Appearance</h2>
+                    
+                    <div class="card">
+                        <h3>Theme Presets</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div class="theme-card" onclick="applyTheme('dark')">
+                                <div style="background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+                                <h4>Dark Mode</h4>
+                                <p>Classic dark theme</p>
+                            </div>
+                            <div class="theme-card" onclick="applyTheme('purple')">
+                                <div style="background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+                                <h4>Discord Purple</h4>
+                                <p>Classic Discord colors</p>
+                            </div>
+                            <div class="theme-card" onclick="applyTheme('gaming')">
+                                <div style="background: linear-gradient(135deg, #00ff88 0%, #00ccff 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+                                <h4>Gaming Neon</h4>
+                                <p>Vibrant gaming theme</p>
+                            </div>
+                            <div class="theme-card" onclick="applyTheme('sunset')">
+                                <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ffd93d 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+                                <h4>Sunset</h4>
+                                <p>Warm sunset colors</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Server Icon & Banner</h3>
+                        <p style="color: #b9bbbe; margin-bottom: 15px;">Upload your server icon and banner directly in Discord</p>
+                        <button class="btn btn-secondary" onclick="window.open('https://discord.com/channels/{{ guild.id }}', '_blank')">Open Server Settings</button>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Custom Color Scheme</h3>
+                        <form id="color-scheme-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Primary Color</label>
+                                    <input type="color" id="primary-color" value="#5865F2">
+                                </div>
+                                <div class="form-group">
+                                    <label>Accent Color</label>
+                                    <input type="color" id="accent-color" value="#7289DA">
+                                </div>
+                                <div class="form-group">
+                                    <label>Success Color</label>
+                                    <input type="color" id="success-color" value="#43B581">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Apply Custom Colors</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Ticketing Section -->
+                <div id="ticketing-section" class="dashboard-section">
+                    <h2 class="section-title">🎫 Ticket System</h2>
+                    
+                    <div class="card">
+                        <h3>Ticket Panel Setup</h3>
+                        <form id="ticket-panel-form">
+                            <div class="form-group">
+                                <label for="ticket-channel">Ticket Panel Channel ID</label>
+                                <input type="text" id="ticket-channel" placeholder="Enter channel ID">
+                                <small>The bot will send the ticket panel to this channel</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Send Ticket Panel</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Ticket Categories</h3>
+                        <form id="ticket-categories-form">
+                            <div id="ticket-categories-list">
+                                <div class="ticket-category-item">
+                                    <input type="text" placeholder="Support" style="flex: 1;">
+                                    <input type="text" placeholder="📩" style="width: 60px;">
+                                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">❌</button>
+                                </div>
+                                <div class="ticket-category-item">
+                                    <input type="text" placeholder="Reports" style="flex: 1;">
+                                    <input type="text" placeholder="⚠️" style="width: 60px;">
+                                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">❌</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="addTicketCategory()">+ Add Category</button>
+                            <button type="submit" class="btn btn-primary">Save Categories</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Ticket Settings</h3>
+                        <form id="ticket-settings-form">
+                            <div class="form-group">
+                                <label for="ticket-category-id">Ticket Category ID</label>
+                                <input type="text" id="ticket-category-id" placeholder="Category ID for tickets">
+                                <small>All ticket channels will be created in this category</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="ticket-transcripts">
+                                    Save ticket transcripts
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="ticket-transcript-channel">Transcript Channel ID</label>
+                                <input type="text" id="ticket-transcript-channel" placeholder="Channel for transcripts">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Moderation Section -->
+                <div id="moderation-section" class="dashboard-section">
+                    <h2 class="section-title">Moderation Settings</h2>
+                    
+                    <div class="card">
+                        <h3>Mod Log Channel</h3>
+                        <form id="modlog-form">
+                            <div class="form-group">
+                                <label for="modlog-channel">Channel ID</label>
+                                <input type="text" id="modlog-channel" value="{{ config.modlog_channel_id or '' }}" placeholder="Enter channel ID">
+                                <small>All moderation actions will be logged here</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Available Moderation Commands</h3>
+                        <ul class="command-list">
+                            <li><code>/kick</code> - Kick a member</li>
+                            <li><code>/ban</code> - Ban a member</li>
+                            <li><code>/unban</code> - Unban a user</li>
+                            <li><code>/timeout</code> - Timeout a member</li>
+                            <li><code>/warn</code> - Warn a member</li>
+                            <li><code>/warnings</code> - View member warnings</li>
+                            <li><code>/clearwarnings</code> - Clear member warnings</li>
+                            <li><code>/purge</code> - Delete multiple messages</li>
+                            <li><code>/slowmode</code> - Set channel slowmode</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Economy Section -->
+                <div id="economy-section" class="dashboard-section">
+                    <h2 class="section-title">💰 Economy System</h2>
+                    
+                    <div class="card">
+                        <h3>Currency Settings</h3>
+                        <form id="economy-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="currency-name">Currency Name</label>
+                                    <input type="text" id="currency-name" value="{{ config.currency_name or 'coins' }}" placeholder="coins">
+                                </div>
+                                <div class="form-group">
+                                    <label for="currency-emoji">Currency Emoji</label>
+                                    <input type="text" id="currency-emoji" value="{{ config.currency_emoji or '💰' }}" placeholder="💰">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="daily-amount">Daily Reward Amount</label>
+                                <input type="number" id="daily-amount" value="{{ config.daily_amount or 1000 }}" min="1">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Economy Settings</button>
+                        </form>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>Economy Commands</h3>
+                        <ul class="command-list">
+                            <li><code>/balance [user]</code> - Check balance</li>
+                            <li><code>/daily</code> - Claim daily reward</li>
+                            <li><code>/work</code> - Work for money (1hr cooldown)</li>
+                            <li><code>/pay &lt;user&gt; &lt;amount&gt;</code> - Transfer money</li>
+                            <li><code>/leaderboard</code> - View economy leaderboard</li>
+                            <li><code>/addmoney &lt;user&gt; &lt;amount&gt;</code> - Add money (Admin)</li>
+                            <li><code>/removemoney &lt;user&gt; &lt;amount&gt;</code> - Remove money (Admin)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Leveling Section -->
+                <div id="leveling-section" class="dashboard-section">
+                    <h2 class="section-title">📊 Leveling System</h2>
+                    
+                    <div class="card">
+                        <h3>Quick Setup</h3>
+                        <p>Automatically create level roles and info channels for your server.</p>
+                        <form id="leveling-quick-setup-form">
+                            <div class="form-group">
+                                <label for="level-milestones">Level Milestones (comma-separated)</label>
+                                <input type="text" id="level-milestones" value="5,10,20,30,50,80,100" placeholder="5,10,20,30,50,80,100">
+                                <small>These levels will get special colored roles automatically</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="create-info-channel" checked>
+                                    Create leveling info channel
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="create-rules-channel">
+                                    Create server rules channel
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">🚀 Auto-Setup Leveling System</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Leveling Settings</h3>
+                        <form id="leveling-form">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="leveling-enabled" {% if config.leveling_enabled != False %}checked{% endif %}>
+                                    Enable Leveling System
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="xp-min">Min XP per Message</label>
+                                    <input type="number" id="xp-min" value="{{ config.xp_min or 15 }}" min="1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="xp-max">Max XP per Message</label>
+                                    <input type="number" id="xp-max" value="{{ config.xp_max or 25 }}" min="1">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="level-up-channel">Level Up Announcement Channel ID (optional)</label>
+                                <input type="text" id="level-up-channel" value="{{ config.level_up_channel_id or '' }}" placeholder="Leave empty for current channel">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Leveling Settings</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Level Role Rewards</h3>
+                        <p>Set roles that users automatically receive when reaching certain levels.</p>
+                        <form id="level-role-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="level-number">Level</label>
+                                    <input type="number" id="level-number" placeholder="5" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="level-role-id">Role ID</label>
+                                    <input type="text" id="level-role-id" placeholder="Enter role ID" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Level Role</button>
+                        </form>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>Leveling Commands</h3>
+                        <ul class="command-list">
+                            <li><code>/rank [user]</code> - Check rank and level</li>
+                            <li><code>/levels</code> - View XP leaderboard</li>
+                            <li><code>/setlevel &lt;user&gt; &lt;level&gt;</code> - Set user level (Admin)</li>
+                            <li><code>/addxp &lt;user&gt; &lt;amount&gt;</code> - Add XP (Admin)</li>
+                            <li><code>/levelrole &lt;level&gt; &lt;role&gt;</code> - Set level role reward (Admin)</li>
+                            <li><code>/removelevelrole &lt;level&gt;</code> - Remove level role (Admin)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Giveaways Section -->
+                <div id="giveaways-section" class="dashboard-section">
+                    <h2 class="section-title">🎉 Giveaway System</h2>
+                    
+                    <div class="card">
+                        <h3>Create Giveaway</h3>
+                        <form id="giveaway-form">
+                            <div class="form-group">
+                                <label for="giveaway-channel">Channel ID</label>
+                                <input type="text" id="giveaway-channel" placeholder="Enter channel ID" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="giveaway-prize">Prize</label>
+                                <input type="text" id="giveaway-prize" placeholder="Discord Nitro" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="giveaway-description">Description (optional)</label>
+                                <textarea id="giveaway-description" rows="3" placeholder="Additional giveaway details..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="giveaway-duration">Duration (minutes)</label>
+                                    <input type="number" id="giveaway-duration" placeholder="60" min="1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="giveaway-winners">Number of Winners</label>
+                                    <input type="number" id="giveaway-winners" placeholder="1" min="1" value="1" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Start Giveaway</button>
+                        </form>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>Giveaway Commands</h3>
+                        <ul class="command-list">
+                            <li><code>/giveaway_start &lt;duration&gt; &lt;winners&gt; &lt;prize&gt;</code> - Start a giveaway</li>
+                            <li><code>/giveaway_end &lt;message_id&gt;</code> - End giveaway early</li>
+                            <li>Users react with 🎉 to enter</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Reaction Roles Section -->
+                <div id="reaction-roles-section" class="dashboard-section">
+                    <h2 class="section-title">Reaction Roles</h2>
+                    
+                    <div class="info-card">
+                        <h3>Setup Instructions</h3>
+                        <ol>
+                            <li>Use <code>/reactionrole_create</code> to create a reaction role panel in a channel</li>
+                            <li>Use <code>/reactionrole_add</code> with the message ID to add role reactions</li>
+                            <li>Use <code>/reactionrole_list</code> to view all configured reaction roles</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Welcome Section -->
+                <div id="welcome-section" class="dashboard-section">
+                    <h2 class="section-title">Welcome & Leave Messages</h2>
+                    
+                    <div class="card">
+                        <h3>Welcome Channel</h3>
+                        <form id="welcome-form">
+                            <div class="form-group">
+                                <label for="welcome-channel">Channel ID</label>
+                                <input type="text" id="welcome-channel" value="{{ config.welcome_channel_id or '' }}" placeholder="Enter channel ID">
+                            </div>
+                            <div class="form-group">
+                                <label for="welcome-message">Welcome Message</label>
+                                <textarea id="welcome-message" rows="3" placeholder="Welcome {user} to {server}!">{{ config.welcome_message or '' }}</textarea>
+                                <small>Variables: {user}, {server}, {membercount}</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>Leave Message</h3>
+                        <form id="leave-form">
+                            <div class="form-group">
+                                <label for="leave-message">Leave Message</label>
+                                <textarea id="leave-message" rows="3" placeholder="{user} has left the server.">{{ config.leave_message or '' }}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div id="settings-section" class="dashboard-section">
+                    <h2 class="section-title">Bot Settings</h2>
+                    
+                    <div class="card">
+                        <h3>General Settings</h3>
+                        <form id="settings-form">
+                            <div class="form-group">
+                                <label for="prefix">Command Prefix</label>
+                                <input type="text" id="prefix" value="{{ config.prefix or '!' }}" maxlength="5">
+                            </div>
+                            <div class="form-group">
+                                <label for="auto-role">Auto Role ID (assigned on join)</label>
+                                <input type="text" id="auto-role" value="{{ config.auto_role_id or '' }}" placeholder="Enter role ID">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        const guildId = {{ guild.id }};
+        
+        // Initialize embed preview
+        updateEmbedPreview();
+    </script>
+</body>
+</html>

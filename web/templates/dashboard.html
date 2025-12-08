@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Channel Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-layout">
+        <nav class="dashboard-nav">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <img src="https://media.discordapp.net/attachments/1443222738750668952/1446618834638471259/Channel-manager.png" alt="Channel Manager" class="nav-logo">
+                    <span class="nav-title">Channel Manager</span>
+                </div>
+                <div class="nav-user">
+                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="user-avatar">
+                    <span class="user-name">{{ user.username }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Logout</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-content">
+            <div class="container">
+                <h1 class="page-title">Your Servers</h1>
+                <p class="page-subtitle">Select a server to manage</p>
+
+                <div class="guilds-grid">
+                    {% for guild in guilds %}
+                    <a href="{{ url_for('guild_dashboard', guild_id=guild.id) }}" class="guild-card">
+                        {% if guild.icon %}
+                        <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="guild-icon">
+                        {% else %}
+                        <div class="guild-icon-placeholder">{{ guild.name[0] }}</div>
+                        {% endif %}
+                        <div class="guild-info">
+                            <h3 class="guild-name">{{ guild.name }}</h3>
+                            <p class="guild-id">ID: {{ guild.id }}</p>
+                        </div>
+                        <svg class="guild-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                    </a>
+                    {% endfor %}
+                </div>
+
+                {% if not guilds %}
+                <div class="empty-state">
+                    <div class="empty-icon">🤖</div>
+                    <h3>No Servers Found</h3>
+                    <p>Make sure the bot is added to your server and you have manage server permissions.</p>
+                    <a href="https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=8&scope=bot%20applications.commands" class="btn btn-primary" target="_blank">Invite Bot</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

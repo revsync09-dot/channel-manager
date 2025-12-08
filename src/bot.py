@@ -1,6 +1,7 @@
 ﻿import asyncio
 import os
 import sys
+import sqlite3
 from typing import Any
 
 import discord
@@ -8,7 +9,6 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from .modules.image_analyzer import analyze_image_stub
 from .modules.text_parser import parse_text_structure
 from .modules.server_builder import build_server_from_template, create_roles, template_from_guild
 from .modules.ticket_system import handle_ticket_select, send_ticket_panel_to_channel
@@ -22,6 +22,13 @@ from .modules.verify_system import (
 )
 from .modules.giveaway import init_giveaway, handle_giveaway_button, start_giveaway, end_giveaway_command as end_gw_command
 from .modules.change_logger import start_change_logger, stop_change_logger
+from .modules.modmail import init_modmail, setup_modmail_commands
+from .modules.reaction_roles import init_reaction_roles, setup_reaction_role_commands
+from .modules.moderation import setup_moderation_commands
+from .modules.custom_commands import init_custom_commands, setup_custom_command_commands
+from .modules.economy import init_economy
+from .modules.leveling import init_leveling
+from .database import db
 
 load_dotenv()
 
@@ -93,6 +100,167 @@ intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
+async def process_pending_setups():
+    """Background task to process pending setup requests from dashboard"""
+    await bot.wait_until_ready()
+    
+    while not bot.is_closed():
+        try:
+            # Check for pending setup requests
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, guild_id, setup_type, data 
+                FROM pending_setup_requests 
+                WHERE processed = 0
+            """)
+            
+            requests = cursor.fetchall()
+            
+            for request_id, guild_id, setup_type, data in requests:
+                guild = bot.get_guild(guild_id)
+                if not guild:
+                    # Mark as processed even if guild not found
+                    cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                    conn.commit()
+                    continue
+                
+                if setup_type == 'leveling':
+                    try:
+                        # Parse data: "5,10,20|1|0" -> milestones, create_info, create_rules
+                        parts = data.split('|')
+                        milestones_str = parts[0]
+                        create_info = bool(int(parts[1])) if len(parts) > 1 else True
+                        create_rules = bool(int(parts[2])) if len(parts) > 2 else False
+                        
+                        # Parse milestones
+                        milestones = [int(m.strip()) for m in milestones_str.split(',')]
+                        
+                        # Import leveling module functions
+                        from modules.leveling import create_leveling_roles, create_leveling_info_channel, create_rules_info_channel
+                        
+                        # Create roles
+                        await create_leveling_roles(guild, milestones, bot.leveling, bot)
+                        
+                        # Create channels if requested
+                        if create_info:
+                            await create_leveling_info_channel(guild, bot)
+                        if create_rules:
+                            await create_rules_info_channel(guild)
+                        
+                        # Mark as processed
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                        
+                        print(f"✅ Processed leveling setup for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error processing leveling setup for guild {guild_id}: {e}")
+                        # Mark as processed to avoid infinite retries
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                
+                elif setup_type == 'create_role':
+                    try:
+                        # Parse data: "name|color_int|hoist|mentionable|permissions"
+                        parts = data.split('|')
+                        name = parts[0]
+                        color_int = int(parts[1]) if len(parts) > 1 else 0x99AAB5
+                        hoist = parts[2] == 'True' if len(parts) > 2 else False
+                        mentionable = parts[3] == 'True' if len(parts) > 3 else False
+                        
+                        # Create role
+                        role = await guild.create_role(
+                            name=name,
+                            color=discord.Color(color_int),
+                            hoist=hoist,
+                            mentionable=mentionable,
+                            reason="Created via dashboard"
+                        )
+                        
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                        print(f"✅ Created role '{name}' for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error creating role for guild {guild_id}: {e}")
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                
+                elif setup_type == 'delete_role':
+                    try:
+                        role_id = int(data)
+                        role = guild.get_role(role_id)
+                        if role:
+                            await role.delete(reason="Deleted via dashboard")
+                            print(f"✅ Deleted role {role_id} from guild {guild_id}")
+                        
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"❌ Error deleting role for guild {guild_id}: {e}")
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                
+                elif setup_type == 'verified_role':
+                    try:
+                        # Create a verified role with appropriate permissions
+                        role = await guild.create_role(
+                            name="✅ Verified",
+                            color=discord.Color(0x43B581),  # Green
+                            hoist=False,
+                            mentionable=False,
+                            reason="Auto-created verified role"
+                        )
+                        
+                        # Store in config for verification system
+                        config = db.get_guild_config(guild_id) or {}
+                        config['verified_role_id'] = role.id
+                        db.update_guild_config(guild_id, config)
+                        
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                        print(f"✅ Created verified role for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error creating verified role for guild {guild_id}: {e}")
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                
+                elif setup_type == 'ticket_setup':
+                    try:
+                        # Parse data: "channel_id|category_id|save_transcripts|transcript_channel"
+                        parts = data.split('|')
+                        panel_channel_id = int(parts[0]) if parts[0] else None
+                        category_id = int(parts[1]) if len(parts) > 1 and parts[1] else None
+                        
+                        if panel_channel_id:
+                            from modules.ticket_system import send_ticket_panel_to_channel
+                            channel = guild.get_channel(panel_channel_id)
+                            if channel:
+                                # Send ticket panel
+                                await send_ticket_panel_to_channel(bot, channel)
+                        
+                        # Store config
+                        if category_id:
+                            config = db.get_guild_config(guild_id) or {}
+                            config['ticket_category_id'] = category_id
+                            db.update_guild_config(guild_id, config)
+                        
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                        print(f"✅ Setup ticket system for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error setting up tickets for guild {guild_id}: {e}")
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+            
+            conn.close()
+        except Exception as e:
+            print(f"Error in process_pending_setups: {e}")
+        
+        # Check every 10 seconds
+        await asyncio.sleep(10)
+
+
 @bot.event
 async def on_ready():
     try:
@@ -100,10 +268,32 @@ async def on_ready():
     except Exception:
         pass
     print(f"Bot logged in as {bot.user}")
+    
+    # Store app info for owner checks
+    bot._app_info = await bot.application_info()
+    
     bot._change_observer = start_change_logger(bot)
     init_verify_state(bot)
     init_giveaway(bot)
+    init_modmail(bot)
+    init_reaction_roles(bot)
+    init_custom_commands(bot)
+    init_economy(bot)
+    init_leveling(bot)
+    setup_modmail_commands(bot)
+    setup_reaction_role_commands(bot)
+    setup_moderation_commands(bot)
+    setup_custom_command_commands(bot)
     await send_ticket_panel_to_channel(bot)
+    
+    # Start background task for processing dashboard requests
+    bot.loop.create_task(process_pending_setups())
+    
+    print("✅ All modules loaded successfully!")
+    print(f"💰 Economy system enabled")
+    print(f"📊 Leveling system enabled")
+    print(f"🔄 Dashboard request processor started")
+    print(f"🌐 Dashboard: Run the web dashboard separately with 'python -m src.web.dashboard'")
 
 
 @bot.event
@@ -206,35 +396,6 @@ async def on_member_join(member: discord.Member):
                 pass
 
 
-class SetupView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(SetupSelect())
-
-
-class SetupSelect(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Image OCR", description="Enter an image URL", value="setup-image"),
-            discord.SelectOption(label="Text Import", description="Paste a text structure", value="setup-text"),
-            discord.SelectOption(label="Clone Server", description="Read a server and build it here", value="setup-clone"),
-            discord.SelectOption(label="Roles Import", description="Make roles from text", value="setup-roles"),
-        ]
-        super().__init__(placeholder="Choose an action...", min_values=1, max_values=1, options=options, custom_id="setup-select")
-
-    async def callback(self, interaction: discord.Interaction):
-        selected = self.values[0]
-        modal_map = {
-            "setup-image": ImageModal,
-            "setup-text": TextModal,
-            "setup-clone": CloneModal,
-            "setup-roles": RolesModal,
-        }
-        modal_cls = modal_map.get(selected)
-        if modal_cls:
-            await interaction.response.send_modal(modal_cls())
-
-
 class RulesView(discord.ui.View):
     def __init__(self, config: dict):
         super().__init__(timeout=None)
@@ -263,91 +424,6 @@ class RulesSelect(discord.ui.Select):
         choice_index = int(self.values[0])
         detail_embed = _build_rules_detail(choice_index, self.config)
         await interaction.response.send_message(embed=detail_embed, ephemeral=True)
-
-
-class ImageModal(discord.ui.Modal, title="Image OCR"):
-    image_url = discord.ui.TextInput(label="Image URL (public)", custom_id="image_url", required=True)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        template = analyze_image_stub(str(self.image_url))
-        try:
-            _ensure_template_safe(template)
-        except Exception as err:
-            await interaction.followup.send(f"Template not safe: {err}", ephemeral=True)
-            return
-        if not interaction.guild:
-            await interaction.followup.send("Template ready. Please run this in a server.", ephemeral=True)
-            return
-        try:
-            await build_server_from_template(interaction.guild, template)
-            await interaction.followup.send("Server built from image OCR.", ephemeral=True)
-        except Exception as err:
-            await interaction.followup.send(f"Build failed: {err}", ephemeral=True)
-
-
-class TextModal(discord.ui.Modal, title="Text Import"):
-    text_structure = discord.ui.TextInput(
-        label="Structure (indented)",
-        custom_id="text_structure",
-        style=discord.TextStyle.long,
-        required=True,
-        default="INFORMATION\n  #rules | Type: text | Permissions: [View Channel, Read Message History]",
-    )
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        if not interaction.guild:
-            await interaction.response.send_message("Please run this inside a server.", ephemeral=True)
-            return
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        template = parse_text_structure(str(self.text_structure))
-        try:
-            _ensure_template_safe(template)
-            await build_server_from_template(interaction.guild, template)
-            await interaction.followup.send("Server built.", ephemeral=True)
-        except Exception as err:
-            await interaction.followup.send(f"Build failed: {err}", ephemeral=True)
-
-
-class CloneModal(discord.ui.Modal, title="Clone Server"):
-    source_guild_id = discord.ui.TextInput(label="Server ID (bot must be in it)", custom_id="source_guild_id", required=True)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        try:
-            source_id = int(str(self.source_guild_id))
-            source_guild = await bot.fetch_guild(source_id)
-            template = await template_from_guild(source_guild)
-            _ensure_template_safe(template)
-            if not interaction.guild:
-                await interaction.followup.send("Template saved. Please run this in a server.", ephemeral=True)
-                return
-            await build_server_from_template(interaction.guild, template)
-            await interaction.followup.send("Server cloned and built.", ephemeral=True)
-        except Exception as err:
-            await interaction.followup.send(f"Clone failed: {err}", ephemeral=True)
-
-
-class RolesModal(discord.ui.Modal, title="Roles Import"):
-    roles_structure = discord.ui.TextInput(
-        label="Roles (one per line, with Color + Permissions)",
-        custom_id="roles_structure",
-        style=discord.TextStyle.long,
-        required=True,
-        default="Owner | Color: #ff0000 | Permissions: [Administrator, Manage Roles]",
-    )
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        if not interaction.guild:
-            await interaction.response.send_message("Please run this inside a server.", ephemeral=True)
-            return
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        try:
-            parsed = parse_text_structure(str(self.roles_structure))
-            created = await create_roles(interaction.guild, parsed.get("roles", []))
-            await interaction.followup.send(f"Created {len(created)} roles.", ephemeral=True)
-        except Exception as err:
-            await interaction.followup.send(f"Could not create roles: {err}", ephemeral=True)
 
 
 class RulesTextModal(discord.ui.Modal, title="Update Rules Texts"):
@@ -440,42 +516,70 @@ class RulesBulkModal(discord.ui.Modal, title="Update up to 5 rules"):
         await interaction.response.send_message(f"Updated {len(categories)} rules.", ephemeral=True)
 
 
-async def _handle_setup_modal(interaction: discord.Interaction):
-    # Required for persistence if modal events arrive without the class instance (edge case)
-    custom_id = interaction.data.get("custom_id")
-    if custom_id == "setup-image":
-        modal = ImageModal()
-        await interaction.response.send_modal(modal)
-    elif custom_id == "setup-text":
-        modal = TextModal()
-        await interaction.response.send_modal(modal)
-    elif custom_id == "setup-clone":
-        modal = CloneModal()
-        await interaction.response.send_modal(modal)
-    elif custom_id == "setup-roles":
-        modal = RolesModal()
-        await interaction.response.send_modal(modal)
-
-
-@bot.tree.command(name="setup", description="Open the server builder panel.")
+@bot.tree.command(name="setup", description="Load a prebuilt server template (customize via dashboard).")
 async def setup_command(interaction: discord.Interaction):
     if not _is_owner_or_admin(interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
+    
+    dashboard_url = os.getenv("DASHBOARD_URL", "https://jthweb.yugp.me:6767")
+    
     embed = discord.Embed(
-        title="Channel Manager Panel",
+        title="🚀 Server Setup",
         description=(
-            "Pick one option below:\n"
-            "- Image OCR: give a screenshot URL and build.\n"
-            "- Text Import: paste a text list.\n"
-            "- Clone: copy a server the bot is in.\n"
-            "- Roles Import: create roles from text."
+            "**Welcome to Channel Manager!**\n\n"
+            "Setup your server with pre-built templates using our web dashboard.\n\n"
+            "**Available Templates:**\n"
+            "🎮 Gaming Server - Perfect for gaming communities\n"
+            "💬 Community Server - Great for social servers\n"
+            "🎫 Support Server - Ideal for customer support\n"
+            "🎨 Creative Server - For artists and creators\n\n"
+            "**Quick Start:**\n"
+            "1. Click the button below to open the dashboard\n"
+            "2. Login with your Discord account\n"
+            "3. Select your server and choose a template\n"
+            "4. Customize channels, roles, and settings\n\n"
+            "**Features:**\n"
+            "✨ Server templates\n"
+            "📝 Custom commands\n"
+            "🔨 Moderation tools\n"
+            "📢 Announcements\n"
+            "🎭 Role management\n"
+            "📊 Embed maker\n"
         ),
         color=EMBED_COLOR,
     )
     embed.set_thumbnail(url=EMBED_THUMB)
-    embed.set_footer(text="Channel Manager - basic panel")
-    await interaction.response.send_message(embed=embed, view=SetupView(), ephemeral=True)
+    embed.set_footer(text="All bot customization happens via the web dashboard")
+    
+    view = discord.ui.View()
+    view.add_item(
+        discord.ui.Button(
+            label="🌐 Open Dashboard",
+            style=discord.ButtonStyle.link,
+            url=dashboard_url,
+        )
+    )
+    view.add_item(
+        discord.ui.Button(
+            label="Support Server",
+            style=discord.ButtonStyle.link,
+            url="https://discord.gg/zjr3Umcu",
+        )
+    )
+    
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@bot.tree.command(name="sync", description="Sync slash commands (Admin+).")
+@app_commands.checks.has_permissions(administrator=True)
+async def sync_command(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        synced = await bot.tree.sync()
+        await interaction.followup.send(f"✅ Synced {len(synced)} command(s) globally.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to sync: {e}", ephemeral=True)
 
 
 @bot.tree.command(name="health", description="Show bot status.")
@@ -734,8 +838,8 @@ class RulesSetupFooterButton(discord.ui.Button):
         await interaction.response.send_modal(RulesFooterModal())
 
 
-@bot.tree.command(name="rules_setup", description="Owner: configure rules (texts, categories, banner) in one place.")
-@app_commands.check(lambda i: i.guild and i.user.id == i.guild.owner_id)
+@bot.tree.command(name="rules_setup", description="Admin+: configure rules (texts, categories, banner) in one place.")
+@app_commands.check(lambda i: _is_owner_or_admin(i))
 async def rules_setup_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
@@ -789,8 +893,8 @@ async def verify_setup_error(interaction: discord.Interaction, error: app_comman
     await _safe_send(interaction, content="Only the server owner can use /verify_setup inside a server.", ephemeral=True)
 
 
-@bot.tree.command(name="giveaway_start", description="Owner: start a giveaway.")
-@app_commands.check(lambda i: i.guild and i.user.id == i.guild.owner_id)
+@bot.tree.command(name="giveaway_start", description="Admin+: start a giveaway.")
+@app_commands.check(lambda i: _is_owner_or_admin(i))
 async def giveaway_start_command(
     interaction: discord.Interaction,
     prize: str,
@@ -810,8 +914,8 @@ async def giveaway_start_error(interaction: discord.Interaction, error: app_comm
     await _safe_send(interaction, content="Only the server owner can start a giveaway.", ephemeral=True)
 
 
-@bot.tree.command(name="giveaway_end", description="Owner: end a giveaway and get transcript.")
-@app_commands.check(lambda i: i.guild and i.user.id == i.guild.owner_id)
+@bot.tree.command(name="giveaway_end", description="Admin+: end a giveaway and get transcript.")
+@app_commands.check(lambda i: _is_owner_or_admin(i))
 @app_commands.describe(message_id="Message ID of the giveaway (leave empty for latest)")
 async def giveaway_end_command(interaction: discord.Interaction, message_id: int | None = None):
     await _ensure_defer(interaction, ephemeral=True)
@@ -885,10 +989,22 @@ def _ensure_template_safe(template: Any) -> None:
 def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
     if not interaction.guild:
         return False
-    if interaction.user.id == interaction.guild.owner_id:
+    # Check if user is guild owner
+    if interaction.guild.owner_id == interaction.user.id:
         return True
+    # Check if user has admin permissions
     member = interaction.user if isinstance(interaction.user, discord.Member) else interaction.guild.get_member(interaction.user.id)
-    return bool(member and member.guild_permissions.administrator)
+    if member and member.guild_permissions.administrator:
+        return True
+    # Check if user is bot owner (from bot application)
+    app_info = getattr(bot, '_app_info', None)
+    if app_info and hasattr(app_info, 'owner'):
+        if app_info.owner and app_info.owner.id == interaction.user.id:
+            return True
+        # Check team members if bot is owned by a team
+        if hasattr(app_info, 'team') and app_info.team:
+            return any(m.id == interaction.user.id for m in app_info.team.members)
+    return False
 
 
 def _build_rules_embed(config: dict) -> discord.Embed:

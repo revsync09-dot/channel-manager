@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ guild.name }} - Channel Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-layout">
+        <nav class="dashboard-nav">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <a href="{{ url_for('dashboard') }}" class="back-link">← Back</a>
+                    {% if guild.icon %}
+                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="nav-logo">
+                    {% endif %}
+                    <span class="nav-title">{{ guild.name }}</span>
+                </div>
+                <div class="nav-user">
+                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="user-avatar">
+                    <span class="user-name">{{ user.username }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Logout</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="dashboard-sidebar">
+            <div class="sidebar-section">
+                <button class="sidebar-item active" data-section="overview">
+                    <span class="sidebar-icon">📊</span>
+                    Overview
+                </button>
+                <button class="sidebar-item" data-section="custom-commands">
+                    <span class="sidebar-icon">⚙️</span>
+                    Custom Commands
+                </button>
+                <button class="sidebar-item" data-section="moderation">
+                    <span class="sidebar-icon">🔨</span>
+                    Moderation
+                </button>
+                <button class="sidebar-item" data-section="reaction-roles">
+                    <span class="sidebar-icon">🎭</span>
+                    Reaction Roles
+                </button>
+                <button class="sidebar-item" data-section="verification">
+                    <span class="sidebar-icon">✅</span>
+                    Verification
+                </button>
+                <button class="sidebar-item" data-section="welcome">
+                    <span class="sidebar-icon">👋</span>
+                    Welcome/Leave
+                </button>
+                <button class="sidebar-item" data-section="settings">
+                    <span class="sidebar-icon">⚙️</span>
+                    Settings
+                </button>
+            </div>
+        </div>
+
+        <div class="dashboard-main">
+            <div class="container">
+                <!-- Overview Section -->
+                <div id="overview-section" class="dashboard-section active">
+                    <h2 class="section-title">Server Overview</h2>
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <div class="stat-label">Custom Commands</div>
+                            <div class="stat-value">{{ custom_commands|length }}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Prefix</div>
+                            <div class="stat-value">{{ config.prefix or '!' }}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Status</div>
+                            <div class="stat-value status-active">Active</div>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Quick Actions</h3>
+                        <div class="actions-grid">
+                            <button class="action-btn" onclick="switchSection('custom-commands')">
+                                <span class="action-icon">⚙️</span>
+                                Manage Commands
+                            </button>
+                            <button class="action-btn" onclick="switchSection('moderation')">
+                                <span class="action-icon">🔨</span>
+                                Moderation Settings
+                            </button>
+                            <button class="action-btn" onclick="switchSection('reaction-roles')">
+                                <span class="action-icon">🎭</span>
+                                Setup Reaction Roles
+                            </button>
+                            <button class="action-btn" onclick="switchSection('verification')">
+                                <span class="action-icon">✅</span>
+                                Configure Verification
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Commands Section -->
+                <div id="custom-commands-section" class="dashboard-section">
+                    <h2 class="section-title">Custom Commands</h2>
+                    
+                    <div class="card">
+                        <h3>Create New Command</h3>
+                        <form id="create-command-form">
+                            <div class="form-group">
+                                <label for="cmd-name">Command Name</label>
+                                <input type="text" id="cmd-name" placeholder="ping" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cmd-response">Response</label>
+                                <textarea id="cmd-response" rows="4" placeholder="Pong! Bot is online." required></textarea>
+                                <small>Variables: {user}, {user.name}, {server}, {channel}</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="cmd-embed">
+                                    Send as embed
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Command</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>Existing Commands</h3>
+                        <div id="commands-list">
+                            {% if custom_commands %}
+                                {% for cmd in custom_commands %}
+                                <div class="command-item">
+                                    <div class="command-info">
+                                        <span class="command-name">!{{ cmd.command_name }}</span>
+                                        <span class="command-response">{{ cmd.response[:50] }}{% if cmd.response|length > 50 %}...{% endif %}</span>
+                                    </div>
+                                    <button class="btn btn-small btn-danger" onclick="deleteCommand('{{ cmd.command_name }}')">Delete</button>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="empty-text">No custom commands yet. Create one above!</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Moderation Section -->
+                <div id="moderation-section" class="dashboard-section">
+                    <h2 class="section-title">Moderation Settings</h2>
+                    
+                    <div class="card">
+                        <h3>Mod Log Channel</h3>
+                        <form id="modlog-form">
+                            <div class="form-group">
+                                <label for="modlog-channel">Channel ID</label>
+                                <input type="text" id="modlog-channel" value="{{ config.modlog_channel_id or '' }}" placeholder="Enter channel ID">
+                                <small>All moderation actions will be logged here</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Available Moderation Commands</h3>
+                        <ul class="command-list">
+                            <li><code>/kick</code> - Kick a member</li>
+                            <li><code>/ban</code> - Ban a member</li>
+                            <li><code>/unban</code> - Unban a user</li>
+                            <li><code>/timeout</code> - Timeout a member</li>
+                            <li><code>/warn</code> - Warn a member</li>
+                            <li><code>/warnings</code> - View member warnings</li>
+                            <li><code>/clearwarnings</code> - Clear member warnings</li>
+                            <li><code>/purge</code> - Delete multiple messages</li>
+                            <li><code>/slowmode</code> - Set channel slowmode</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Reaction Roles Section -->
+                <div id="reaction-roles-section" class="dashboard-section">
+                    <h2 class="section-title">Reaction Roles</h2>
+                    
+                    <div class="info-card">
+                        <h3>Setup Instructions</h3>
+                        <ol>
+                            <li>Use <code>/reactionrole_create</code> to create a reaction role panel in a channel</li>
+                            <li>Use <code>/reactionrole_add</code> with the message ID to add role reactions</li>
+                            <li>Use <code>/reactionrole_list</code> to view all configured reaction roles</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Verification Section -->
+                <div id="verification-section" class="dashboard-section">
+                    <h2 class="section-title">Verification System</h2>
+                    
+                    <div class="card">
+                        <h3>Verification Settings</h3>
+                        <p>Configure verification using the <code>/verify_setup</code> command in Discord.</p>
+                        <ul class="command-list">
+                            <li><code>/verify</code> - Show verification panel</li>
+                            <li><code>/verify_setup</code> - Configure roles and messages</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Welcome Section -->
+                <div id="welcome-section" class="dashboard-section">
+                    <h2 class="section-title">Welcome & Leave Messages</h2>
+                    
+                    <div class="card">
+                        <h3>Welcome Channel</h3>
+                        <form id="welcome-form">
+                            <div class="form-group">
+                                <label for="welcome-channel">Channel ID</label>
+                                <input type="text" id="welcome-channel" value="{{ config.welcome_channel_id or '' }}" placeholder="Enter channel ID">
+                            </div>
+                            <div class="form-group">
+                                <label for="welcome-message">Welcome Message</label>
+                                <textarea id="welcome-message" rows="3" placeholder="Welcome {user} to {server}!">{{ config.welcome_message or '' }}</textarea>
+                                <small>Variables: {user}, {server}, {membercount}</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>Leave Message</h3>
+                        <form id="leave-form">
+                            <div class="form-group">
+                                <label for="leave-message">Leave Message</label>
+                                <textarea id="leave-message" rows="3" placeholder="{user} has left the server.">{{ config.leave_message or '' }}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div id="settings-section" class="dashboard-section">
+                    <h2 class="section-title">Bot Settings</h2>
+                    
+                    <div class="card">
+                        <h3>General Settings</h3>
+                        <form id="settings-form">
+                            <div class="form-group">
+                                <label for="prefix">Command Prefix</label>
+                                <input type="text" id="prefix" value="{{ config.prefix or '!' }}" maxlength="5">
+                            </div>
+                            <div class="form-group">
+                                <label for="auto-role">Auto Role ID (assigned on join)</label>
+                                <input type="text" id="auto-role" value="{{ config.auto_role_id or '' }}" placeholder="Enter role ID">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const guildId = {{ guild.id }};
+
+        // Section switching
+        function switchSection(sectionName) {
+            document.querySelectorAll('.dashboard-section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+            
+            document.getElementById(sectionName + '-section').classList.add('active');
+            document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
+        }
+
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const section = item.getAttribute('data-section');
+                switchSection(section);
+            });
+        });
+
+        // Custom Commands
+        document.getElementById('create-command-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('cmd-name').value;
+            const response = document.getElementById('cmd-response').value;
+            const embed = document.getElementById('cmd-embed').checked;
+            
+            const res = await fetch(`/api/guild/${guildId}/commands`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, response, embed})
+            });
+            
+            if (res.ok) {
+                alert('Command created successfully!');
+                location.reload();
+            } else {
+                alert('Failed to create command');
+            }
+        });
+
+        async function deleteCommand(name) {
+            if (!confirm(`Delete command "${name}"?`)) return;
+            
+            const res = await fetch(`/api/guild/${guildId}/commands?name=${name}`, {
+                method: 'DELETE'
+            });
+            
+            if (res.ok) {
+                alert('Command deleted!');
+                location.reload();
+            } else {
+                alert('Failed to delete command');
+            }
+        }
+
+        // Config forms
+        async function saveConfig(data) {
+            const res = await fetch(`/api/guild/${guildId}/config`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (res.ok) {
+                alert('Settings saved!');
+            } else {
+                alert('Failed to save settings');
+            }
+        }
+
+        document.getElementById('modlog-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const modlog_channel_id = document.getElementById('modlog-channel').value;
+            saveConfig({modlog_channel_id});
+        });
+
+        document.getElementById('welcome-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const welcome_channel_id = document.getElementById('welcome-channel').value;
+            const welcome_message = document.getElementById('welcome-message').value;
+            saveConfig({welcome_channel_id, welcome_message});
+        });
+
+        document.getElementById('leave-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const leave_message = document.getElementById('leave-message').value;
+            saveConfig({leave_message});
+        });
+
+        document.getElementById('settings-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const prefix = document.getElementById('prefix').value;
+            const auto_role_id = document.getElementById('auto-role').value;
+            saveConfig({prefix, auto_role_id});
+        });
+    </script>
+</body>
+</html>
