@@ -36,6 +36,10 @@
                     <span class="sidebar-icon">🚀</span>
                     Server Setup
                 </button>
+                    <button class="sidebar-item" data-section="ai">
+                        <span class="sidebar-icon">🤖</span>
+                        AI Setup
+                    </button>
                 <button class="sidebar-item" data-section="custom-commands">
                     <span class="sidebar-icon">⚙️</span>
                     Custom Commands
@@ -151,6 +155,64 @@
                                 <span class="action-icon">🔨</span>
                                 Moderation
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Setup Section -->
+                <div id="ai-section" class="dashboard-section">
+                    <h2 class="section-title">🤖 AI Server Architect</h2>
+                    
+                    <div class="card ai-hero">
+                        <div class="ai-hero-text">
+                            <h3>Describe what you want, AI builds it</h3>
+                            <p>Tell the AI your server vibe (gaming, community, support) and it will draft channels, categories, roles, and emojis. One click to apply.</p>
+                            <ul>
+                                <li>Auto roles with colors</li>
+                                <li>Text + voice channel mixes with emojis</li>
+                                <li>Mod settings kept intact</li>
+                            </ul>
+                        </div>
+                        <div class="ai-hero-cta">
+                            <form id="ai-chat-form">
+                                <label for="ai-prompt">What should we build?</label>
+                                <textarea id="ai-prompt" rows="3" placeholder="e.g., gaming hub with ranked, casual, voice lounges, verified role, mod section"></textarea>
+                                <button type="submit" class="btn btn-primary">Generate with AI</button>
+                                <small id="ai-status" class="muted"></small>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="card ai-chat">
+                        <div class="ai-chat-header">
+                            <div>
+                                <h3>AI Conversation</h3>
+                                <p class="muted">Live suggestions powered by Google Gemini</p>
+                            </div>
+                            <button class="btn btn-secondary" onclick="clearAiChat()">Clear</button>
+                        </div>
+                        <div id="ai-chat-log" class="ai-chat-log">
+                            <div class="ai-message ai-bot">Hi! Tell me what you need and I'll craft the channels, categories, and roles.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card ai-plan">
+                        <div class="ai-plan-header">
+                            <div>
+                                <h3>Proposed Structure</h3>
+                                <p class="muted">Review and tweak before applying</p>
+                            </div>
+                            <button class="btn btn-primary" id="ai-apply-plan" disabled>Apply to Server</button>
+                        </div>
+                        <div class="ai-plan-grid">
+                            <div>
+                                <h4>Roles</h4>
+                                <div id="ai-plan-roles" class="ai-pill-list">No roles yet</div>
+                            </div>
+                            <div>
+                                <h4>Categories & Channels</h4>
+                                <div id="ai-plan-categories" class="ai-plan-categories">No plan yet</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -886,7 +948,7 @@
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script>
-        const guildId = {{ guild.id }};
+        const guildId = "{{ guild.id }}";
         
         // Initialize embed preview
         updateEmbedPreview();
