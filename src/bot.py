@@ -547,7 +547,7 @@ class RulesBulkModal(discord.ui.Modal, title="Update up to 5 rules"):
 
 @bot.tree.command(name="setup", description="Load a prebuilt server template (customize via dashboard).")
 async def setup_command(interaction: discord.Interaction):
-    if not _is_owner_or_admin(interaction):
+    if not await _is_owner_or_admin(interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
     
@@ -613,7 +613,7 @@ async def sync_command(interaction: discord.Interaction):
 
 @bot.tree.command(name="health", description="Show bot status.")
 async def health_command(interaction: discord.Interaction):
-    if not _is_owner_or_admin(interaction):
+    if not await _is_owner_or_admin(interaction):
         await _safe_send(interaction, content="Only the server owner or admins can use this command.", ephemeral=True)
         return
 
@@ -813,7 +813,7 @@ class RulesSetupTextButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.primary, label="Edit Texts")
 
     async def callback(self, interaction: discord.Interaction):
-        if not interaction.guild or not _is_owner_or_admin(interaction):
+        if not interaction.guild or not await _is_owner_or_admin(interaction):
             await interaction.response.send_message("Only the server owner can edit rules.", ephemeral=True)
             return
         modal = RulesTextModal(_get_rules_config(interaction.guild_id))
@@ -825,7 +825,7 @@ class RulesSetupBulkButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.secondary, label="Bulk Rules")
 
     async def callback(self, interaction: discord.Interaction):
-        if not interaction.guild or not _is_owner_or_admin(interaction):
+        if not interaction.guild or not await _is_owner_or_admin(interaction):
             await interaction.response.send_message("Only the server owner can edit rules.", ephemeral=True)
             return
         await interaction.response.send_modal(RulesBulkModal())
@@ -836,7 +836,7 @@ class RulesSetupBannerButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.success, label="Set Banner")
 
     async def callback(self, interaction: discord.Interaction):
-        if not interaction.guild or not _is_owner_or_admin(interaction):
+        if not interaction.guild or not await _is_owner_or_admin(interaction):
             await interaction.response.send_message("Only the server owner can edit rules.", ephemeral=True)
             return
         await interaction.response.send_modal(RulesBannerModal())
@@ -847,7 +847,7 @@ class RulesSetupClearBannerButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.danger, label="Clear Banner")
 
     async def callback(self, interaction: discord.Interaction):
-        if not interaction.guild or not _is_owner_or_admin(interaction):
+        if not interaction.guild or not await _is_owner_or_admin(interaction):
             await interaction.response.send_message("Only the server owner can edit rules.", ephemeral=True)
             return
         config = _get_rules_config(interaction.guild_id)
@@ -861,14 +861,14 @@ class RulesSetupFooterButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.secondary, label="Set Footer")
 
     async def callback(self, interaction: discord.Interaction):
-        if not interaction.guild or not _is_owner_or_admin(interaction):
+        if not interaction.guild or not await _is_owner_or_admin(interaction):
             await interaction.response.send_message("Only the server owner can edit rules.", ephemeral=True)
             return
         await interaction.response.send_modal(RulesFooterModal())
 
 
 @bot.tree.command(name="rules_setup", description="Admin+: configure rules (texts, categories, banner) in one place.")
-@app_commands.check(lambda i: _is_owner_or_admin(i))
+@app_commands.check(_is_owner_or_admin)
 async def rules_setup_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
@@ -909,7 +909,7 @@ async def verify_command(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="verify_setup", description="Owner: configure verify roles/banner/footer.")
-@app_commands.check(lambda i: _is_owner_or_admin(i))
+@app_commands.check(_is_owner_or_admin)
 async def verify_setup_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
@@ -923,7 +923,7 @@ async def verify_setup_error(interaction: discord.Interaction, error: app_comman
 
 
 @bot.tree.command(name="giveaway_start", description="Admin+: start a giveaway.")
-@app_commands.check(lambda i: _is_owner_or_admin(i))
+@app_commands.check(_is_owner_or_admin)
 async def giveaway_start_command(
     interaction: discord.Interaction,
     prize: str,
@@ -944,7 +944,7 @@ async def giveaway_start_error(interaction: discord.Interaction, error: app_comm
 
 
 @bot.tree.command(name="giveaway_end", description="Admin+: end a giveaway and get transcript.")
-@app_commands.check(lambda i: _is_owner_or_admin(i))
+@app_commands.check(_is_owner_or_admin)
 @app_commands.describe(message_id="Message ID of the giveaway (leave empty for latest)")
 async def giveaway_end_command(interaction: discord.Interaction, message_id: int | None = None):
     await _ensure_defer(interaction, ephemeral=True)
@@ -959,7 +959,7 @@ async def delete_channels_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Please run this inside a server.", ephemeral=True)
         return
-    if not _is_owner_or_admin(interaction):
+    if not await _is_owner_or_admin(interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
 
@@ -982,7 +982,7 @@ async def delete_roles_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Please run this inside a server.", ephemeral=True)
         return
-    if not _is_owner_or_admin(interaction):
+    if not await _is_owner_or_admin(interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
 
@@ -1015,22 +1015,25 @@ def _ensure_template_safe(template: Any) -> None:
         raise ValueError(f"Too many roles ({role_count}).")
 
 
-def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
+async def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
     if not interaction.guild:
         return False
-    # Check if user is guild owner
-    if interaction.guild.owner_id == interaction.user.id:
+    owner_id = interaction.guild.owner_id
+    if not owner_id:
+        try:
+            owner = await interaction.guild.fetch_owner()
+            owner_id = owner.id
+        except Exception:
+            owner_id = None
+    if owner_id == interaction.user.id:
         return True
-    # Check if user has admin permissions
-    member = interaction.user if isinstance(interaction.user, discord.Member) else interaction.guild.get_member(interaction.user.id)
+    member = interaction.user if isinstance(interaction.user, discord.Member) else await interaction.guild.fetch_member(interaction.user.id)
     if member and member.guild_permissions.administrator:
         return True
-    # Check if user is bot owner (from bot application)
     app_info = getattr(bot, '_app_info', None)
     if app_info and hasattr(app_info, 'owner'):
         if app_info.owner and app_info.owner.id == interaction.user.id:
             return True
-        # Check team members if bot is owned by a team
         if hasattr(app_info, 'team') and app_info.team:
             return any(m.id == interaction.user.id for m in app_info.team.members)
     return False
