@@ -2,7 +2,9 @@
 import os
 import sys
 import sqlite3
+import json
 from typing import Any
+from datetime import datetime, timedelta
 
 import discord
 from discord import app_commands
@@ -1152,6 +1154,185 @@ def _valid_banner(url: str) -> bool:
     if len(url) > 2048:
         return False
     return _is_image_link(url)
+
+
+def _build_quickchart_payload(username: str, avatar_url: str, today_chat: int, today_voice: int, 
+                               avg_chat: float, avg_voice: float, chat_values: list, voice_values: list, 
+                               labels: list) -> dict:
+    """Build QuickChart JSON payload for stats visualization"""
+    return {
+        "width": 600,
+        "height": 400,
+        "backgroundColor": "white",
+        "chart": {
+            "type": "line",
+            "data": {
+                "labels": labels,
+                "datasets": [
+                    {
+                        "label": "Chat Minutes",
+                        "data": chat_values,
+                        "borderColor": "rgb(59, 130, 246)",
+                        "backgroundColor": "rgba(59, 130, 246, 0.1)",
+                        "fill": True,
+                        "tension": 0.4
+                    },
+                    {
+                        "label": "Voice Minutes",
+                        "data": voice_values,
+                        "borderColor": "rgb(34, 197, 94)",
+                        "backgroundColor": "rgba(34, 197, 94, 0.1)",
+                        "fill": True,
+                        "tension": 0.4
+                    }
+                ]
+            },
+            "options": {
+                "responsive": True,
+                "plugins": {
+                    "title": {
+                        "display": True,
+                        "text": f"{username}'s Activity (Last 30 Days)",
+                        "font": {
+                            "size": 16
+                        }
+                    },
+                    "legend": {
+                        "display": True,
+                        "position": "top"
+                    }
+                },
+                "scales": {
+                    "y": {
+                        "beginAtZero": True,
+                        "title": {
+                            "display": True,
+                            "text": "Minutes"
+                        }
+                    },
+                    "x": {
+                        "title": {
+                            "display": True,
+                            "text": "Date"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+@bot.tree.command(name="stats", description="View your activity statistics for the last 30 days")
+@app_commands.describe(user="The user to view stats for (defaults to yourself)")
+async def stats_command(interaction: discord.Interaction, user: discord.User = None):
+    """Display user activity statistics"""
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    # Default to the user who invoked the command
+    target_user = user if user else interaction.user
+    guild_id = interaction.guild.id
+    user_id = target_user.id
+    
+    # Check if user has any activity
+    if not db.has_user_activity(guild_id, user_id):
+        await interaction.followup.send(
+            f"No activity data found for {target_user.mention}.",
+            ephemeral=True
+        )
+        return
+    
+    # Calculate date range (last 30 days)
+    today = datetime.utcnow().date()
+    start_date = today - timedelta(days=29)
+    
+    # Convert to ISO date strings
+    start_date_str = start_date.isoformat()
+    end_date_str = today.isoformat()
+    
+    # Fetch activity data from database
+    activity_rows = db.get_user_activity_summary(guild_id, user_id, start_date_str, end_date_str)
+    
+    # Build a dict for quick lookup
+    activity_dict = {}
+    for row in activity_rows:
+        activity_dict[row['activity_date']] = {
+            'chat': row['chat_minutes'],
+            'voice': row['voice_minutes']
+        }
+    
+    # Build 30-day arrays aligned with dates
+    chat_values = []
+    voice_values = []
+    labels = []
+    
+    for i in range(30):
+        date = start_date + timedelta(days=i)
+        date_str = date.isoformat()
+        labels.append(date.strftime("%m/%d"))
+        
+        if date_str in activity_dict:
+            chat_values.append(activity_dict[date_str]['chat'])
+            voice_values.append(activity_dict[date_str]['voice'])
+        else:
+            chat_values.append(0)
+            voice_values.append(0)
+    
+    # Calculate today's activity and averages
+    today_str = today.isoformat()
+    today_chat = activity_dict.get(today_str, {}).get('chat', 0)
+    today_voice = activity_dict.get(today_str, {}).get('voice', 0)
+    
+    # Calculate 30-day averages
+    total_chat = sum(chat_values)
+    total_voice = sum(voice_values)
+    avg_chat = total_chat / 30.0
+    avg_voice = total_voice / 30.0
+    
+    # Get user avatar and username
+    username = target_user.name
+    avatar_url = target_user.display_avatar.url if target_user.display_avatar else target_user.default_avatar.url
+    
+    # Build QuickChart payload
+    chart_config = _build_quickchart_payload(
+        username, avatar_url, today_chat, today_voice,
+        avg_chat, avg_voice, chat_values, voice_values, labels
+    )
+    
+    # Create embed with stats
+    embed = discord.Embed(
+        title=f"📊 Activity Stats for {username}",
+        color=EMBED_COLOR,
+        timestamp=discord.utils.utcnow()
+    )
+    embed.set_thumbnail(url=avatar_url)
+    
+    embed.add_field(
+        name="📅 Today's Activity",
+        value=f"**Chat:** {today_chat} min\n**Voice:** {today_voice} min",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📈 30-Day Averages",
+        value=f"**Chat:** {avg_chat:.1f} min/day\n**Voice:** {avg_voice:.1f} min/day",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📊 Total (30 days)",
+        value=f"**Chat:** {total_chat} min\n**Voice:** {total_voice} min",
+        inline=True
+    )
+    
+    # Note: QuickChart visualization would require encoding the JSON and creating a URL
+    # For now, we'll include the chart data in the embed
+    embed.set_footer(text="Activity tracked over the last 30 days")
+    
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 if not TOKEN:
