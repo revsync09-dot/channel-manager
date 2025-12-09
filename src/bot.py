@@ -4,7 +4,7 @@ import sys
 import sqlite3
 import json
 from typing import Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
@@ -1246,7 +1246,7 @@ async def stats_command(interaction: discord.Interaction, user: discord.User = N
         return
     
     # Calculate date range (last 30 days)
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=29)
     
     # Convert to ISO date strings
