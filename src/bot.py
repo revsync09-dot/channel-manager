@@ -1,13 +1,16 @@
-﻿import asyncio
+import asyncio
+import logging
 import os
 import sys
 import sqlite3
-from typing import Any
+from datetime import date, timedelta
+from typing import Any, List
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+import requests
 
 from .modules.text_parser import parse_text_structure
 from .modules.server_builder import build_server_from_template, create_roles, template_from_guild
@@ -98,6 +101,7 @@ intents.guilds = True
 intents.members = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+logger = logging.getLogger(__name__)
 
 
 async def process_pending_setups():
@@ -641,6 +645,202 @@ async def health_command(interaction: discord.Interaction):
     embed.timestamp = discord.utils.utcnow()
 
     await _safe_send(interaction, embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="stats", description="View 30-day chat and voice activity.")
+async def stats_command(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("Use this in a server.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    target_user = interaction.user
+    guild_id = interaction.guild.id
+
+    if not db.has_user_activity(guild_id, target_user.id):
+        await interaction.followup.send("No activity data found.", ephemeral=True)
+        return
+
+    today = date.today()
+    start_date = (today - timedelta(days=29)).isoformat()
+    end_date = today.isoformat()
+    activity_rows = db.get_user_activity_summary(guild_id, target_user.id, start_date, end_date) or []
+    activity_by_date = {row["activity_date"]: row for row in activity_rows}
+
+    labels: List[str] = []
+    chat_points: List[int] = []
+    voice_points: List[int] = []
+    total_chat = 0
+    total_voice = 0
+
+    for offset in range(30):
+        current_day = (today - timedelta(days=29 - offset))
+        day_key = current_day.isoformat()
+        row = activity_by_date.get(day_key)
+        chat_val = int(row["chat_minutes"]) if row else 0
+        voice_val = int(row["voice_minutes"]) if row else 0
+        labels.append(day_key)
+        chat_points.append(chat_val)
+        voice_points.append(voice_val)
+        total_chat += chat_val
+        total_voice += voice_val
+
+    today_row = activity_by_date.get(end_date)
+    today_chat = int(today_row["chat_minutes"]) if today_row else 0
+    today_voice = int(today_row["voice_minutes"]) if today_row else 0
+    avg_chat = round(total_chat / 30) if total_chat else 0
+    avg_voice = round(total_voice / 30) if total_voice else 0
+
+    avatar_url = str(target_user.display_avatar.replace(size=128, format="png"))
+    header_plugin = {
+        "id": "statsHeader",
+        "beforeDraw": (
+            "function(chart, args, opts) {"
+            " const ctx = chart.ctx;"
+            " const canvas = chart.canvas;"
+            " ctx.save();"
+            " ctx.fillStyle = 'white';"
+            " ctx.fillRect(0, 0, canvas.width, canvas.height);"
+            " const avatarX = 40; const avatarY = 35; const radius = 35;"
+            " const drawCircle = () => { ctx.beginPath(); ctx.arc(avatarX, avatarY, radius, 0, Math.PI * 2); ctx.closePath(); };"
+            " if (opts.avatarUrl) {"
+            "   const img = new Image();"
+            "   img.src = opts.avatarUrl;"
+            "   const drawAvatar = () => {"
+            "     ctx.save();"
+            "     drawCircle();"
+            "     ctx.clip();"
+            "     ctx.drawImage(img, avatarX - radius, avatarY - radius, radius * 2, radius * 2);"
+            "     ctx.restore();"
+            "   };"
+            "   if (img.complete) {"
+            "     drawAvatar();"
+            "   } else {"
+            "     img.onload = drawAvatar;"
+            "     img.onerror = () => {"
+            "       ctx.fillStyle = '#e5e7eb';"
+            "       drawCircle();"
+            "       ctx.fill();"
+            "     };"
+            "   }"
+            " } else {"
+            "   ctx.fillStyle = '#e5e7eb';"
+            "   drawCircle();"
+            "   ctx.fill();"
+            " }"
+            " ctx.fillStyle = '#000000';"
+            " ctx.font = 'bold 26px Sans-serif';"
+            " ctx.textBaseline = 'top';"
+            " ctx.fillText(opts.username || '', 90, 20);"
+            " ctx.font = '16px Sans-serif';"
+            " const todayLine = `Today\\u2019s Activity \\u2014 Chat: ${opts.todayChat} min, Voice: ${opts.todayVoice} min`;"
+            " const avgLine = `30-Day Average \\u2014 Chat: ${opts.avgChat} min, Voice: ${opts.avgVoice} min`;"
+            " ctx.fillStyle = '#111827';"
+            " ctx.fillText(todayLine, 90, 60);"
+            " ctx.fillStyle = '#374151';"
+            " ctx.fillText(avgLine, 90, 90);"
+            " ctx.strokeStyle = '#e5e7eb';"
+            " ctx.lineWidth = 1;"
+            " ctx.beginPath();"
+            " ctx.moveTo(0, 150);"
+            " ctx.lineTo(canvas.width, 150);"
+            " ctx.stroke();"
+            " ctx.restore();"
+            " }"
+        ),
+    }
+
+    chart_config = {
+        "type": "line",
+        "data": {
+            "labels": labels,
+            "datasets": [
+                {
+                    "label": "Chat Minutes",
+                    "data": chat_points,
+                    "borderColor": "#3498db",
+                    "backgroundColor": "rgba(52,152,219,0.08)",
+                    "fill": False,
+                    "tension": 0.3,
+                    "borderWidth": 3,
+                },
+                {
+                    "label": "Voice Minutes",
+                    "data": voice_points,
+                    "borderColor": "#2ecc71",
+                    "backgroundColor": "rgba(46,204,113,0.08)",
+                    "fill": False,
+                    "tension": 0.3,
+                    "borderWidth": 3,
+                },
+            ],
+        },
+        "options": {
+            "responsive": True,
+            "maintainAspectRatio": False,
+            "layout": {"padding": {"top": 170, "left": 20, "right": 20, "bottom": 20}},
+            "plugins": {
+                "legend": {
+                    "labels": {"color": "#4b5563", "font": {"size": 12}},
+                    "position": "top",
+                },
+                "statsHeader": {
+                    "username": str(target_user.display_name),
+                    "avatarUrl": avatar_url,
+                    "todayChat": today_chat,
+                    "todayVoice": today_voice,
+                    "avgChat": avg_chat,
+                    "avgVoice": avg_voice,
+                },
+            },
+            "scales": {
+                "x": {
+                    "ticks": {"color": "#6b7280", "maxRotation": 0, "autoSkip": True, "maxTicksLimit": 30},
+                    "grid": {"color": "#e5e7eb"},
+                },
+                "y": {
+                    "ticks": {"color": "#6b7280"},
+                    "grid": {"color": "#e5e7eb"},
+                },
+            },
+        },
+        "plugins": [header_plugin],
+    }
+
+    payload = {
+        "chart": chart_config,
+        "backgroundColor": "white",
+        "width": 900,
+        "height": 600,
+    }
+
+    try:
+        response = await asyncio.to_thread(
+            requests.post, "https://quickchart.io/chart/create", json=payload, timeout=15
+        )
+        response.raise_for_status()
+        chart_url = response.json().get("url")
+    except requests.RequestException as exc:
+        chart_url = None
+        logger.error("QuickChart request failed: %s", exc)
+    except ValueError as exc:
+        chart_url = None
+        logger.error("QuickChart response parsing failed: %s", exc)
+    except Exception:
+        chart_url = None
+        logger.exception("Unexpected QuickChart error")
+
+    if not chart_url:
+        await interaction.followup.send("Failed to render stats card. Please try again later.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title=f"{target_user.display_name}'s Activity",
+        color=EMBED_COLOR,
+    )
+    embed.set_image(url=chart_url)
+    await interaction.followup.send(embed=embed, ephemeral=False)
 
 
 @bot.tree.command(name="help", description="Show a short help message.")

@@ -227,6 +227,19 @@ class Database:
                 processed INTEGER DEFAULT 0
             )
         """)
+
+        # User activity tracking (chat + voice minutes)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_activity (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                chat_minutes INTEGER DEFAULT 0,
+                voice_minutes INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, user_id, activity_date)
+            )
+        """)
         
         conn.commit()
         conn.close()
@@ -551,6 +564,70 @@ class Database:
         
         cursor.execute("DELETE FROM level_roles WHERE guild_id = ? AND level = ?", (guild_id, level))
         
+        conn.commit()
+        conn.close()
+
+    # User activity tracking
+    def has_user_activity(self, guild_id: int, user_id: int) -> bool:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT 1 FROM user_activity WHERE guild_id = ? AND user_id = ? LIMIT 1",
+            (guild_id, user_id),
+        )
+        exists = cursor.fetchone() is not None
+
+        conn.close()
+        return exists
+
+    def get_user_activity_summary(
+        self, guild_id: int, user_id: int, start_date: str, end_date: str
+    ) -> List[sqlite3.Row]:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT activity_date, chat_minutes, voice_minutes
+            FROM user_activity
+            WHERE guild_id = ? AND user_id = ? AND activity_date BETWEEN ? AND ?
+            ORDER BY activity_date ASC
+            """,
+            (guild_id, user_id, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+
+        conn.close()
+        return rows
+
+    def upsert_user_activity(
+        self,
+        guild_id: int,
+        user_id: int,
+        activity_date: str,
+        chat_delta: int = 0,
+        voice_delta: int = 0,
+    ) -> None:
+        if chat_delta == 0 and voice_delta == 0:
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO user_activity (guild_id, user_id, activity_date, chat_minutes, voice_minutes)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(guild_id, user_id, activity_date) DO UPDATE SET
+                chat_minutes = chat_minutes + excluded.chat_minutes,
+                voice_minutes = voice_minutes + excluded.voice_minutes,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (guild_id, user_id, activity_date, chat_delta, voice_delta),
+        )
+
         conn.commit()
         conn.close()
 
