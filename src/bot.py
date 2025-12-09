@@ -2,7 +2,6 @@
 import os
 import sys
 import sqlite3
-import json
 from typing import Any
 
 import discord
@@ -99,9 +98,6 @@ intents.guilds = True
 intents.members = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Attach shared database instance to bot
-bot.db = db
 
 
 async def process_pending_setups():
@@ -256,72 +252,6 @@ async def process_pending_setups():
                         print(f"❌ Error setting up tickets for guild {guild_id}: {e}")
                         cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
                         conn.commit()
-
-                elif setup_type == 'template':
-                    try:
-                        template = _get_dashboard_template(data)
-                        _ensure_template_safe(template)
-                        await build_server_from_template(guild, template)
-
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
-                        print(f"✅ Applied template '{data}' for guild {guild_id}")
-                    except Exception as e:
-                        print(f"❌ Error applying template '{data}' for guild {guild_id}: {e}")
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
-
-                elif setup_type == 'ai_plan':
-                    try:
-                        plan = json.loads(data)
-                        roles = plan.get('roles', [])[:20]
-                        categories = plan.get('categories', [])[:10]
-                        created_channels = 0
-                        
-                        # Create roles first
-                        for role_data in roles:
-                            name = role_data.get('name')
-                            color_val = role_data.get('color', '#99AAB5')
-                            if not name:
-                                continue
-                            try:
-                                if isinstance(color_val, str) and color_val.startswith('#'):
-                                    color_int = int(color_val[1:], 16)
-                                else:
-                                    color_int = int(str(color_val), 16)
-                            except Exception:
-                                color_int = 0x99AAB5
-                            await guild.create_role(
-                                name=name[:100],
-                                color=discord.Color(color_int),
-                                hoist=False,
-                                mentionable=False,
-                                reason="AI setup plan"
-                            )
-                        
-                        # Create categories and channels
-                        for cat in categories:
-                            cat_name = cat.get('name', 'New Category')[:100]
-                            category = await guild.create_category(cat_name)
-                            for channel in cat.get('channels', [])[:8]:
-                                if created_channels >= 40:
-                                    break
-                                ch_name = channel.get('name', 'new-channel')[:100]
-                                ch_type = channel.get('type', 'text')
-                                topic = channel.get('topic')
-                                if ch_type == 'voice':
-                                    await guild.create_voice_channel(ch_name, category=category, reason="AI setup plan")
-                                else:
-                                    await guild.create_text_channel(ch_name, category=category, topic=topic, reason="AI setup plan")
-                                created_channels += 1
-                        
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
-                        print(f"✅ Applied AI plan for guild {guild_id}")
-                    except Exception as e:
-                        print(f"❌ Error applying AI plan for guild {guild_id}: {e}")
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
             
             conn.close()
         except Exception as e:
@@ -377,22 +307,51 @@ async def on_disconnect():
 async def on_guild_join(guild: discord.Guild):
     try:
         owner = guild.owner or await guild.fetch_owner()
+        bot_name = bot.user.name if bot.user else "Channel Manager"
         embed = discord.Embed(
-            title="Welcome to Channel Manager",
-            description=(
-                "Thanks for adding the bot.\n"
-                "1) Run /setup and pick an action (Image, Text, Clone, Roles).\n"
-                "2) Paste your structure and let it build.\n"
-                "3) Discord hard limit is about 500 channels per server.\n\n"
-                "Rules/verify/tickets setup:\n"
-                "- /rules to show the rules panel\n"
-                "- /rules_setup for owner config (texts, rules, banner)"
-            ),
+            title=f"Thank you for adding {bot_name} ⚡ to {guild.name}!",
+            description="Get ready to upgrade moderation, automation und dashboard workflows.",
             color=EMBED_COLOR,
         )
         embed.set_thumbnail(url=EMBED_THUMB)
-        embed.set_footer(text="Channel Manager - simple server builder")
-
+        embed.add_field(
+            name="🕹️ How to Interact",
+            value=(
+                f"• Mention me: @{bot_name}⚡ followed by your question.\n"
+                "• Use the prefix `bb` plus your prompt (e.g., `bb hello`).\n"
+                "• Reply to one of my answers so the conversation keeps context."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="🛡️ Core Systems",
+            value=(
+                "• ĐY'ª Modmail: Private threads between users and staff with transcript history.\n"
+                "• ĐYZđ Reaction Roles: Set auto-roles per emoji panel using `/reactionrole_*` commands.\n"
+                "• ĐY\"ù Moderation: Kick, ban, timeout, warn, purge, slowmode + logging with `/modlog`.\n"
+                "• ƒsT‹÷? Custom Commands: Build commands with `{user}`, `{server}`, `{channel}` variables."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="⚙️ Automation & Growth",
+            value=(
+                "• ĐY'ø Economy: Custom currency, daily rewards, pay/transfer, leaderboard + admin tools.\n"
+                "• ĐY\"S Leveling: XP per message, level role rewards, rank announcements and quick setup.\n"
+                "• ĐYZ% Giveaways & Tickets: Timed giveaways, entries with ĐYZ%, plus ticket panels and transcripts."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="🌐 Dashboard & Templates",
+            value=(
+                "• Secure Discord OAuth login with server-specific config.\n"
+                "• Server templates (Gaming, Community, Support, Creative) plus Embed maker + Announcements.\n"
+                "• Real-time moderation, welcome/leave messages, auto-roles und prefix settings."
+            ),
+            inline=False,
+        )
+        embed.set_footer(text="Channel Manager · CHECK `README.md` für Details + `FEATURES.md` für alle Systeme")
         view = discord.ui.View()
         view.add_item(
             discord.ui.Button(
@@ -1054,129 +1013,6 @@ def _ensure_template_safe(template: Any) -> None:
         raise ValueError(f"Too many channels ({channel_count}). Discord limit is around 500.")
     if role_count > MAX_ROLES:
         raise ValueError(f"Too many roles ({role_count}).")
-
-
-def _get_dashboard_template(name: str) -> dict:
-    name = (name or "").lower()
-    staff_roles = [
-        {"name": "👑 Admin", "color": 0xF04747, "permissions": 8, "hoist": True, "mentionable": False},
-        {"name": "🛡️ Moderator", "color": 0x5865F2, "permissions": 0, "hoist": True, "mentionable": True},
-        {"name": "✅ Verified", "color": 0x43B581, "permissions": 0, "hoist": False, "mentionable": True},
-    ]
-
-    templates = {
-        "gaming": {
-            "roles": staff_roles + [{"name": "🎮 Gamer", "color": 0x00FF88, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 ANNOUNCEMENTS",
-                    "channels": [
-                        {"name": "📢-news", "type": "text", "topic": "Server updates"},
-                        {"name": "🎉-events", "type": "text", "topic": "Giveaways and tournaments"},
-                    ],
-                },
-                {
-                    "name": "💬 LOBBY",
-                    "channels": [
-                        {"name": "👋-welcome", "type": "text", "topic": "Introduce yourself"},
-                        {"name": "💭-chat", "type": "text", "topic": "General chat"},
-                        {"name": "🔊 Squad 1", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "🎮 GAMES",
-                    "channels": [
-                        {"name": "🥇-ranked", "type": "text", "topic": "Ranked coordination"},
-                        {"name": "🤝-lfg", "type": "text", "topic": "Find teammates"},
-                        {"name": "🎧 Game Chat", "type": "voice"},
-                    ],
-                },
-            ],
-        },
-        "community": {
-            "roles": staff_roles + [{"name": "🎭 Member", "color": 0x99AAB5, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 INFO",
-                    "channels": [
-                        {"name": "📢-announcements", "type": "text"},
-                        {"name": "📜-rules", "type": "text"},
-                    ],
-                },
-                {
-                    "name": "💬 COMMUNITY",
-                    "channels": [
-                        {"name": "general", "type": "text", "topic": "Chat with everyone"},
-                        {"name": "media-share", "type": "text", "topic": "Images and clips"},
-                        {"name": "Lounge", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "🎉 EVENTS",
-                    "channels": [
-                        {"name": "giveaways", "type": "text"},
-                        {"name": "polls", "type": "text"},
-                    ],
-                },
-            ],
-        },
-        "support": {
-            "roles": staff_roles + [{"name": "🙋 Customer", "color": 0xFFB347, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "ℹ️ START HERE",
-                    "channels": [
-                        {"name": "welcome", "type": "text"},
-                        {"name": "faq", "type": "text", "topic": "Common questions"},
-                    ],
-                },
-                {
-                    "name": "🎟️ SUPPORT",
-                    "channels": [
-                        {"name": "create-ticket", "type": "text", "topic": "Open support tickets"},
-                        {"name": "transcripts", "type": "text", "topic": "Closed ticket logs"},
-                        {"name": "Support VC", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "📚 KNOWLEDGE BASE",
-                    "channels": [
-                        {"name": "guides", "type": "text"},
-                        {"name": "updates", "type": "text"},
-                    ],
-                },
-            ],
-        },
-        "creative": {
-            "roles": staff_roles + [{"name": "🎨 Creator", "color": 0xE67E22, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 NEWS",
-                    "channels": [
-                        {"name": "announcements", "type": "text"},
-                        {"name": "roadmap", "type": "text"},
-                    ],
-                },
-                {
-                    "name": "🖼️ SHOWCASE",
-                    "channels": [
-                        {"name": "art-drop", "type": "text", "topic": "Share art"},
-                        {"name": "critiques", "type": "text", "topic": "Get feedback"},
-                        {"name": "Studio", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "💡 COLLAB",
-                    "channels": [
-                        {"name": "ideas", "type": "text"},
-                        {"name": "work-in-progress", "type": "text"},
-                    ],
-                },
-            ],
-        },
-    }
-
-    return templates.get(name) or templates["community"]
 
 
 def _is_owner_or_admin(interaction: discord.Interaction) -> bool:

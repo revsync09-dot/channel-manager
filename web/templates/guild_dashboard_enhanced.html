@@ -4,953 +4,779 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ guild.name }} - Channel Manager</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style_enhanced.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: '#0d0f12',
+                        panel: '#111827',
+                        accent: '#6b8bff'
+                    },
+                    boxShadow: {
+                        glow: '0 25px 70px -25px rgba(79, 70, 229, 0.45)'
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <div class="dashboard-layout">
-        <nav class="dashboard-nav">
-            <div class="nav-container">
-                <div class="nav-brand">
-                    <a href="{{ url_for('dashboard') }}" class="back-link">← Back</a>
-                    {% if guild.icon %}
-                    <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="nav-logo">
-                    {% endif %}
-                    <span class="nav-title">{{ guild.name }}</span>
+<body class="min-h-screen bg-gradient-to-br from-[#0d0f12] via-[#0f172a] to-[#0b1020] text-slate-100">
+    <div class="flex min-h-screen">
+        <aside class="w-72 flex-shrink-0 border-r border-white/5 bg-white/5 px-4 py-6 backdrop-blur">
+            {% set logo_webp = url_for('static', filename='assets/logo.webp') %}
+            {% set logo_png = url_for('static', filename='assets/logo.png') %}
+            {% set logo_svg = url_for('static', filename='assets/logo.svg') %}
+            <div class="flex items-center gap-3 rounded-2xl bg-white/5 px-3 py-2">
+                <a href="{{ url_for('dashboard') }}" class="text-indigo-300 hover:text-indigo-200">&larr;</a>
+                {% if guild.icon %}
+                <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="h-10 w-10 rounded-xl border border-white/10 object-cover">
+                {% else %}
+                <div class="relative h-10 w-10 overflow-hidden rounded-xl bg-indigo-500/20">
+                    <img src="{{ logo_webp }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    <img src="{{ logo_png }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    <img src="{{ logo_svg }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
                 </div>
-                <div class="nav-user">
-                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="user-avatar">
-                    <span class="user-name">{{ user.username }}</span>
-                    <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Logout</a>
+                {% endif %}
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-wide text-slate-400">Server</p>
+                    <p class="truncate text-lg font-semibold text-slate-50">{{ guild.name }}</p>
                 </div>
             </div>
-        </nav>
-
-        <div class="dashboard-sidebar">
-            <div class="sidebar-section">
-                <button class="sidebar-item active" data-section="overview">
-                    <span class="sidebar-icon">📊</span>
-                    Overview
-                </button>
-                <button class="sidebar-item" data-section="setup">
-                    <span class="sidebar-icon">🚀</span>
-                    Server Setup
-                </button>
-                    <button class="sidebar-item" data-section="ai">
-                        <span class="sidebar-icon">🤖</span>
-                        AI Setup
-                    </button>
-                <button class="sidebar-item" data-section="custom-commands">
-                    <span class="sidebar-icon">⚙️</span>
-                    Custom Commands
-                </button>
-                <button class="sidebar-item" data-section="embed-maker">
-                    <span class="sidebar-icon">📝</span>
-                    Embed Maker
-                </button>
-                <button class="sidebar-item" data-section="announcements">
-                    <span class="sidebar-icon">📢</span>
-                    Announcements
-                </button>
-                <button class="sidebar-item" data-section="roles">
-                    <span class="sidebar-icon">🎭</span>
-                    Roles
-                </button>
-                <button class="sidebar-item" data-section="appearance">
-                    <span class="sidebar-icon">🎨</span>
-                    Appearance
-                </button>
-                <button class="sidebar-item" data-section="ticketing">
-                    <span class="sidebar-icon">🎫</span>
-                    Ticketing
-                </button>
-                <button class="sidebar-item" data-section="economy">
-                    <span class="sidebar-icon">💰</span>
-                    Economy
-                </button>
-                <button class="sidebar-item" data-section="leveling">
-                    <span class="sidebar-icon">📊</span>
-                    Leveling
-                </button>
-                <button class="sidebar-item" data-section="giveaways">
-                    <span class="sidebar-icon">🎉</span>
-                    Giveaways
-                </button>
-                <button class="sidebar-item" data-section="moderation">
-                    <span class="sidebar-icon">🔨</span>
-                    Moderation
-                </button>
-                <button class="sidebar-item" data-section="reaction-roles">
-                    <span class="sidebar-icon">✨</span>
-                    Reaction Roles
-                </button>
-                <button class="sidebar-item" data-section="welcome">
-                    <span class="sidebar-icon">👋</span>
-                    Welcome/Leave
-                </button>
-                <button class="sidebar-item" data-section="settings">
-                    <span class="sidebar-icon">⚙️</span>
-                    Settings
-                </button>
-            </div>
-        </div>
-
-        <div class="dashboard-main">
-            <div class="container">
-                <!-- Overview Section -->
-                <div id="overview-section" class="dashboard-section active">
-                    <h2 class="section-title">Server Overview</h2>
-                    
-                    <div class="card invite-card">
-                        <h3>🤖 Add Bot to Server</h3>
-                        <p>Haven't added the bot yet? Click below to invite it with all necessary permissions.</p>
-                        <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.bot_client_id or 'YOUR_BOT_CLIENT_ID' }}&permissions=8&scope=bot%20applications.commands" 
-                           target="_blank" class="btn btn-primary">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-                            </svg>
-                            Invite Bot to Server
-                        </a>
-                    </div>
-
-                    <div class="stats-row">
-                        <div class="stat-box">
-                            <div class="stat-label">Custom Commands</div>
-                            <div class="stat-value">{{ custom_commands|length }}</div>
+            <div class="mt-6 space-y-4 text-sm font-medium text-slate-300">
+                <div class="rounded-2xl border border-white/5 bg-white/5 p-3 shadow-glow shadow-indigo-500/10">
+                    <p class="mb-2 text-xs uppercase tracking-wide text-slate-500">Bot Settings</p>
+                    <div class="space-y-2">
+                        {% for label in ['Verification / Greetings','Custom Commands','Timed Messages','Command Moderation','Auto Moderation','Audit Logging'] %}
+                        <div class="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2">
+                            <span class="text-slate-200">{{ label }}</span>
+                            <label class="relative inline-flex h-6 w-12 cursor-pointer items-center transition">
+                                <input type="checkbox" class="peer sr-only" checked>
+                                <span class="absolute inset-0 rounded-full bg-slate-700 transition-all duration-300 peer-checked:bg-indigo-500 peer-checked:shadow-[0_0_12px_rgba(99,102,241,0.7)]"></span>
+                                <span class="absolute left-1 h-4 w-4 rounded-full bg-white transition-all duration-300 peer-checked:translate-x-6 peer-checked:bg-slate-900"></span>
+                            </label>
                         </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Prefix</div>
-                            <div class="stat-value">{{ config.prefix or '!' }}</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Status</div>
-                            <div class="stat-value status-active">Active</div>
-                        </div>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>Quick Actions</h3>
-                        <div class="actions-grid">
-                            <button class="action-btn" onclick="switchSection('setup')">
-                                <span class="action-icon">🚀</span>
-                                Server Setup
-                            </button>
-                            <button class="action-btn" onclick="switchSection('custom-commands')">
-                                <span class="action-icon">⚙️</span>
-                                Manage Commands
-                            </button>
-                            <button class="action-btn" onclick="switchSection('embed-maker')">
-                                <span class="action-icon">📝</span>
-                                Create Embed
-                            </button>
-                            <button class="action-btn" onclick="switchSection('announcements')">
-                                <span class="action-icon">📢</span>
-                                Send Announcement
-                            </button>
-                            <button class="action-btn" onclick="switchSection('roles')">
-                                <span class="action-icon">🎭</span>
-                                Manage Roles
-                            </button>
-                            <button class="action-btn" onclick="switchSection('moderation')">
-                                <span class="action-icon">🔨</span>
-                                Moderation
-                            </button>
-                        </div>
+                        {% endfor %}
                     </div>
                 </div>
+                <nav class="space-y-1">
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 bg-white/10 text-indigo-100" data-section="overview">Overview</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="setup">Server Setup</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="custom-commands">Custom Commands</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="embed-maker">Embed Maker</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="announcements">Announcements</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="roles">Roles</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="appearance">Appearance</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="ticketing">Ticketing</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="economy">Economy</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="leveling">Leveling</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="giveaways">Giveaways</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="moderation">Moderation</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="reaction-roles">Reaction Roles</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="welcome">Welcome/Leave</button>
+                    <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5" data-section="settings">Settings</button>
+                </nav>
+            </div>
+        </aside>
 
-                <!-- AI Setup Section -->
-                <div id="ai-section" class="dashboard-section">
-                    <h2 class="section-title">🤖 AI Server Architect</h2>
-                    
-                    <div class="card ai-hero">
-                        <div class="ai-hero-text">
-                            <h3>Describe what you want, AI builds it</h3>
-                            <p>Tell the AI your server vibe (gaming, community, support) and it will draft channels, categories, roles, and emojis. One click to apply.</p>
-                            <ul>
-                                <li>Auto roles with colors</li>
-                                <li>Text + voice channel mixes with emojis</li>
-                                <li>Mod settings kept intact</li>
-                            </ul>
+        <div class="flex flex-1 flex-col">
+            <header class="flex flex-col gap-4 border-b border-white/5 bg-white/5 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="relative h-12 w-12 overflow-hidden rounded-2xl bg-indigo-500/20">
+                        <img src="{{ logo_webp }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                        <img src="{{ logo_png }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                        <img src="{{ logo_svg }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-400">Channel-Manager</p>
+                        <h1 class="text-2xl font-bold text-slate-50">{{ guild.name }}</h1>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300">
+                        <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
+                        Bot Online
+                    </span>
+                    <div class="flex items-center gap-3 rounded-full border border-white/5 bg-white/5 px-3 py-2">
+                        <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="h-9 w-9 rounded-full border border-white/10">
+                        <div>
+                            <p class="text-xs text-slate-400">Signed in</p>
+                            <p class="text-sm font-semibold text-slate-50">{{ user.username }}</p>
                         </div>
-                        <div class="ai-hero-cta">
-                            <form id="ai-chat-form">
-                                <label for="ai-prompt">What should we build?</label>
-                                <textarea id="ai-prompt" rows="3" placeholder="e.g., gaming hub with ranked, casual, voice lounges, verified role, mod section"></textarea>
-                                <button type="submit" class="btn btn-primary">Generate with AI</button>
-                                <small id="ai-status" class="muted"></small>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto">
+                <div class="space-y-8 px-4 py-8 sm:px-6">
+                    <div id="overview-section" class="dashboard-section active space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-3">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <p class="text-sm text-slate-400">Invite</p>
+                                <h3 class="text-xl font-semibold text-slate-50">Add Bot to Server</h3>
+                                <p class="mt-2 text-sm text-slate-400">Invite the bot with all required permissions.</p>
+                                <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.bot_client_id or 'YOUR_BOT_CLIENT_ID' }}&permissions=8&scope=bot%20applications.commands" target="_blank" class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Invite Bot</a>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <p class="text-sm text-slate-400">Stats</p>
+                                <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+                                    <div class="rounded-xl border border-white/10 bg-white/5 p-3">
+                                    <p class="text-xs text-slate-400">Commands</p>
+                                    <p class="text-2xl font-semibold text-slate-50">{{ custom_commands|length }}</p>
+                                    </div>
+                                    <div class="rounded-xl border border-white/10 bg-white/5 p-3">
+                                        <p class="text-xs text-slate-400">Prefix</p>
+                                        <p class="text-2xl font-semibold text-slate-50">{{ config.prefix or '!' }}</p>
+                                    </div>
+                                    <div class="rounded-xl border border-white/10 bg-white/5 p-3">
+                                        <p class="text-xs text-slate-400">Status</p>
+                                        <p class="text-2xl font-semibold text-emerald-300">Active</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <p class="text-sm text-slate-400">Quick Actions</p>
+                                <div class="mt-4 grid grid-cols-2 gap-2 text-sm font-semibold">
+                                    <button onclick="switchSection('setup')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Server Setup</button>
+                                    <button onclick="switchSection('custom-commands')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Commands</button>
+                                    <button onclick="switchSection('embed-maker')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Embed Maker</button>
+                                    <button onclick="switchSection('announcements')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Announcements</button>
+                                    <button onclick="switchSection('roles')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Roles</button>
+                                    <button onclick="switchSection('moderation')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-200 hover:border-indigo-500 hover:text-indigo-100">Moderation</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="setup-section" class="dashboard-section hidden space-y-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <p class="text-sm text-slate-400">Templates</p>
+                                <h2 class="text-2xl font-bold text-slate-50">Server Setup</h2>
+                            </div>
+                            <button onclick="openCustomSetup()" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-indigo-500">Custom Setup</button>
+                        </div>
+                        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 transition hover:-translate-y-1 hover:border-indigo-500" onclick="applyTemplate('gaming')">
+                                <p class="text-xs uppercase text-slate-400">Gaming</p>
+                                <h3 class="text-lg font-semibold text-slate-50">Gaming Server</h3>
+                                <p class="mt-2 text-sm text-slate-400">Voice channels, game categories, LFG.</p>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 transition hover:-translate-y-1 hover:border-indigo-500" onclick="applyTemplate('community')">
+                                <p class="text-xs uppercase text-slate-400">Community</p>
+                                <h3 class="text-lg font-semibold text-slate-50">Community Server</h3>
+                                <p class="mt-2 text-sm text-slate-400">Discussion, events, and social channels.</p>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 transition hover:-translate-y-1 hover:border-indigo-500" onclick="applyTemplate('support')">
+                                <p class="text-xs uppercase text-slate-400">Support</p>
+                                <h3 class="text-lg font-semibold text-slate-50">Support Server</h3>
+                                <p class="mt-2 text-sm text-slate-400">Tickets, FAQ, and staff areas.</p>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 transition hover:-translate-y-1 hover:border-indigo-500" onclick="applyTemplate('creative')">
+                                <p class="text-xs uppercase text-slate-400">Creative</p>
+                                <h3 class="text-lg font-semibold text-slate-50">Creative Server</h3>
+                                <p class="mt-2 text-sm text-slate-400">Showcase, feedback, collaboration.</p>
+                            </div>
+                        </div>
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl shadow-black/30">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-sm text-slate-400">Text Import</p>
+                                        <h3 class="text-xl font-semibold text-slate-50">Channel Structure</h3>
+                                    </div>
+                                </div>
+                                <textarea id="channel-structure" rows="10" class="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" placeholder="Paste or type your structure...">📜 INFORMATION (category)
+  #announcements
+  #bot-info
+
+👥 COMMUNITY (category)
+  #general
+  #showcase
+
+🎮 ACTIVITIES (category)
+  #lfg
+  #tournaments
+
+🛠️ SUPPORT & MODMAIL (category)
+  #create-ticket
+  #help
+
+🎨 CREATIVE (category)
+  #art
+  #feedback
+
+💼 DEVELOPMENT (category)
+  #updates
+  #changelog</textarea>
+                                <p class="mt-2 text-xs text-slate-500">Placeholder disappears on edit; backend parsing remains unchanged.</p>
+                            </div>
+                            <div class="rounded-2xl border border-dashed border-indigo-500/40 bg-white/5 p-6 shadow-xl shadow-black/30">
+                                <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
+                                    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/15 text-indigo-200">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 16v-8m0 0l-3 3m3-3l3 3M6 20h12a2 2 0 0 0 2-2V8.5a2 2 0 0 0-.586-1.414l-3.5-3.5A2 2 0 0 0 14.5 3H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                                    </div>
+                                    <p class="text-lg font-semibold text-slate-50">Image Import</p>
+                                    <p class="max-w-sm text-sm text-slate-400">Drop or click to upload an image of your layout. Existing bindings stay intact.</p>
+                                    <label class="mt-2 inline-flex cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-indigo-500/20 px-4 py-2 text-sm font-semibold text-indigo-100 hover:border-indigo-400 hover:bg-indigo-500/30">
+                                        <input type="file" id="structure-image" class="hidden" accept="image/*">
+                                        <span>Upload Image</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="custom-commands-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Create Command</h2>
+                                <form id="create-command-form" class="mt-4 space-y-4">
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="cmd-name">Command Name</label>
+                                            <input id="cmd-name" type="text" placeholder="ping" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required>
+                                        </div>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="cmd-type">Type</label>
+                                            <select id="cmd-type" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                                <option value="text">Text Response</option>
+                                                <option value="embed">Embed Response</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="cmd-response">Response</label>
+                                        <textarea id="cmd-response" rows="4" placeholder="Pong! Bot is online." class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required></textarea>
+                                        <p class="mt-1 text-xs text-slate-500">Variables: {user}, {user.name}, {server}, {channel}, {membercount}</p>
+                                    </div>
+                                    <label class="flex items-center gap-2 text-sm text-slate-300">
+                                        <input type="checkbox" id="cmd-embed" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                        Send as embed
+                                    </label>
+                                    <button type="submit" class="w-full rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Create Command</button>
+                                </form>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <div class="flex items-center justify-between">
+                                    <h2 class="text-xl font-semibold text-slate-50">Existing Commands ({{ custom_commands|length }})</h2>
+                                </div>
+                                <div id="commands-list" class="mt-4 space-y-3">
+                                    {% if custom_commands %}
+                                        {% for cmd in custom_commands %}
+                                        <div class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-semibold text-slate-50">!{{ cmd.command_name }}</p>
+                                                <p class="truncate text-xs text-slate-400">{{ cmd.response[:50] }}{% if cmd.response|length > 50 %}...{% endif %}</p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-indigo-500" onclick="editCommand('{{ cmd.command_name }}')">Edit</button>
+                                                <button class="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-500" onclick="deleteCommand('{{ cmd.command_name }}')">Delete</button>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <p class="text-sm text-slate-400">No custom commands yet. Create one above.</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="embed-maker-section" class="dashboard-section hidden space-y-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-slate-400">Embeds</p>
+                                <h2 class="text-2xl font-bold text-slate-50">Embed Maker</h2>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="exportEmbedJSON()" class="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-indigo-500">Export JSON</button>
+                                <button onclick="sendEmbed()" class="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Send Embed</button>
+                            </div>
+                        </div>
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="space-y-4 rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-title">Title</label>
+                                        <input id="embed-title" type="text" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-color">Color</label>
+                                        <input id="embed-color" type="color" value="#5865F2" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-2 py-1 text-sm text-slate-100">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-slate-400" for="embed-description">Description</label>
+                                    <textarea id="embed-description" rows="4" placeholder="Embed description..." oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"></textarea>
+                                </div>
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-author-name">Author Name</label>
+                                        <input id="embed-author-name" type="text" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-author-icon">Author Icon URL</label>
+                                        <input id="embed-author-icon" type="url" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                </div>
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-thumbnail">Thumbnail URL</label>
+                                        <input id="embed-thumbnail" type="url" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-image">Image URL</label>
+                                        <input id="embed-image" type="url" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                </div>
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-footer">Footer Text</label>
+                                        <input id="embed-footer" type="text" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="embed-footer-icon">Footer Icon URL</label>
+                                        <input id="embed-footer-icon" type="url" oninput="updateEmbedPreview()" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                </div>
+                                <label class="flex items-center gap-2 text-sm text-slate-300">
+                                    <input type="checkbox" id="embed-timestamp" oninput="updateEmbedPreview()" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                    Include timestamp
+                                </label>
+                                <div>
+                                    <label class="text-sm text-slate-400" for="embed-channel">Target Channel ID</label>
+                                    <input id="embed-channel" type="text" placeholder="Enter channel ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                </div>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-gradient-to-b from-white/10 to-white/5 p-6 shadow-xl shadow-black/40">
+                                <h3 class="text-lg font-semibold text-slate-50">Preview</h3>
+                                <div id="embed-preview" class="mt-4 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                                    <div class="embed-message text-sm text-slate-200">Live preview will appear here.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="announcements-section" class="dashboard-section hidden space-y-6">
+                        <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-slate-400">Broadcast</p>
+                                    <h2 class="text-2xl font-bold text-slate-50">Announcements</h2>
+                                </div>
+                            </div>
+                            <form id="announcement-form" class="mt-4 space-y-4">
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="announcement-channel">Channel ID</label>
+                                        <input type="text" id="announcement-channel" placeholder="Enter channel ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="announcement-type">Type</label>
+                                        <select id="announcement-type" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                            <option value="info">Info</option>
+                                            <option value="success">Success</option>
+                                            <option value="warning">Warning</option>
+                                            <option value="important">Important</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-slate-400" for="announcement-content">Content</label>
+                                    <textarea id="announcement-content" rows="4" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" placeholder="Write your announcement..."></textarea>
+                                </div>
+                                <label class="flex items-center gap-2 text-sm text-slate-300">
+                                    <input type="checkbox" id="announcement-mention-everyone" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                    Mention @everyone
+                                </label>
+                                <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Send Announcement</button>
                             </form>
                         </div>
                     </div>
-                    
-                    <div class="card ai-chat">
-                        <div class="ai-chat-header">
-                            <div>
-                                <h3>AI Conversation</h3>
-                                <p class="muted">Live suggestions powered by Google Gemini</p>
-                            </div>
-                            <button class="btn btn-secondary" onclick="clearAiChat()">Clear</button>
-                        </div>
-                        <div id="ai-chat-log" class="ai-chat-log">
-                            <div class="ai-message ai-bot">Hi! Tell me what you need and I'll craft the channels, categories, and roles.</div>
-                        </div>
-                    </div>
-                    
-                    <div class="card ai-plan">
-                        <div class="ai-plan-header">
-                            <div>
-                                <h3>Proposed Structure</h3>
-                                <p class="muted">Review and tweak before applying</p>
-                            </div>
-                            <button class="btn btn-primary" id="ai-apply-plan" disabled>Apply to Server</button>
-                        </div>
-                        <div class="ai-plan-grid">
-                            <div>
-                                <h4>Roles</h4>
-                                <div id="ai-plan-roles" class="ai-pill-list">No roles yet</div>
-                            </div>
-                            <div>
-                                <h4>Categories & Channels</h4>
-                                <div id="ai-plan-categories" class="ai-plan-categories">No plan yet</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Server Setup Section -->
-                <div id="setup-section" class="dashboard-section">
-                    <h2 class="section-title">Server Setup Templates</h2>
-                    
-                    <div class="card">
-                        <h3>Choose a Template</h3>
-                        <p>Select a pre-built server template to quickly set up your server structure.</p>
-                        
-                        <div class="template-grid">
-                            <div class="template-card" onclick="applyTemplate('gaming')">
-                                <div class="template-icon">🎮</div>
-                                <h4>Gaming Server</h4>
-                                <p>Perfect for gaming communities with voice channels, game categories, and LFG</p>
-                                <ul class="template-features">
-                                    <li>5 voice channels</li>
-                                    <li>Game-specific text channels</li>
-                                    <li>LFG and events channels</li>
-                                    <li>Gaming roles</li>
+                    <div id="roles-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Create Role</h2>
+                                <form id="create-role-form" class="mt-4 space-y-4">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="role-name">Role Name</label>
+                                        <input type="text" id="role-name" placeholder="Moderator" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div class="grid gap-4 md:grid-cols-3">
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="role-color">Color</label>
+                                            <input type="color" id="role-color" value="#99AAB5" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-2 py-1 text-sm text-slate-100">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="role-color-hex">Hex</label>
+                                            <input type="text" id="role-color-hex" value="#99AAB5" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <div class="flex items-end">
+                                            <div id="role-color-preview" class="h-10 w-full rounded-xl border border-white/10 bg-[#99AAB5]"></div>
+                                        </div>
+                                    </div>
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <label class="flex items-center gap-2 text-sm text-slate-300">
+                                            <input type="checkbox" id="role-hoist" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                            Display separately
+                                        </label>
+                                        <label class="flex items-center gap-2 text-sm text-slate-300">
+                                            <input type="checkbox" id="role-mentionable" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                            Mentionable
+                                        </label>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-slate-400">Permissions</p>
+                                        <div class="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-300">
+                                            {% for perm in ['Administrator','Manage Server','Manage Roles','Manage Channels','Kick Members','Ban Members','Timeout Members','Manage Messages'] %}
+                                            <label class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                                                <input type="checkbox" class="role-perm h-4 w-4 rounded border-slate-700 bg-slate-900" value="{{ perm }}">
+                                                <span>{{ perm }}</span>
+                                            </label>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Create Role</button>
+                                </form>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Bulk Roles</h3>
+                                    <textarea id="bulk-roles" rows="4" placeholder="One role per line" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"></textarea>
+                                    <button type="button" onclick="createBulkRoles()" class="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 hover:border-indigo-500">Create Roles</button>
+                                </div>
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Role Templates</h3>
+                                    <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                                        <button type="button" onclick="applyRoleTemplate('gaming')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-slate-200 hover:border-indigo-500">Gaming</button>
+                                        <button type="button" onclick="applyRoleTemplate('staff')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-slate-200 hover:border-indigo-500">Staff</button>
+                                        <button type="button" onclick="applyRoleTemplate('community')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-slate-200 hover:border-indigo-500">Community</button>
+                                        <button type="button" onclick="applyRoleTemplate('colors')" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-slate-200 hover:border-indigo-500">Colors</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="appearance-section" class="dashboard-section hidden space-y-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-slate-400">Branding</p>
+                                <h2 class="text-2xl font-bold text-slate-50">Server Appearance</h2>
+                            </div>
+                        </div>
+                        <div class="grid gap-4 md:grid-cols-3">
+                            <div onclick="applyTheme('aurora')" class="cursor-pointer rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-500/20 via-slate-900 to-slate-900/80 p-5 text-slate-50 shadow-xl shadow-black/40 hover:border-indigo-500">
+                                <h3 class="text-lg font-semibold">Aurora</h3>
+                                <p class="text-sm text-slate-300">Soft indigo glow with calm contrasts.</p>
+                            </div>
+                            <div onclick="applyTheme('midnight')" class="cursor-pointer rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-5 text-slate-50 shadow-xl shadow-black/40 hover:border-indigo-500">
+                                <h3 class="text-lg font-semibold">Midnight</h3>
+                                <p class="text-sm text-slate-300">High contrast midnight palette.</p>
+                            </div>
+                            <div onclick="applyTheme('neon')" class="cursor-pointer rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/15 via-slate-900 to-slate-900/80 p-5 text-slate-50 shadow-xl shadow-black/40 hover:border-indigo-500">
+                                <h3 class="text-lg font-semibold">Neon</h3>
+                                <p class="text-sm text-slate-300">Bold accent-forward highlights.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ticketing-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Ticket Panel</h2>
+                                <form id="ticket-panel-form" class="mt-4 space-y-4">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="ticket-channel">Ticket Panel Channel ID</label>
+                                        <input type="text" id="ticket-channel" placeholder="Enter channel ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        <p class="mt-1 text-xs text-slate-500">The bot will send the ticket panel to this channel.</p>
+                                    </div>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Send Ticket Panel</button>
+                                </form>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Ticket Categories</h3>
+                                    <form id="ticket-categories-form" class="mt-4 space-y-3">
+                                        <div id="ticket-categories-list" class="space-y-2">
+                                            <div class="flex items-center gap-2">
+                                                <input type="text" placeholder="Support" class="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500">
+                                                <input type="text" placeholder="🎫" class="w-20 rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-slate-100">
+                                                <button type="button" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:border-red-400 hover:text-red-200" onclick="this.parentElement.remove()">Remove</button>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <button type="button" onclick="addTicketCategory()" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-indigo-500">+ Add Category</button>
+                                            <button type="submit" class="rounded-lg bg-indigo-500 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save Categories</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Ticket Settings</h3>
+                                    <form id="ticket-settings-form" class="mt-4 space-y-3">
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="ticket-category-id">Ticket Category ID</label>
+                                            <input type="text" id="ticket-category-id" placeholder="Category ID for tickets" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <label class="flex items-center gap-2 text-sm text-slate-300">
+                                            <input type="checkbox" id="ticket-transcripts" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                            Save ticket transcripts
+                                        </label>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="ticket-transcript-channel">Transcript Channel ID</label>
+                                            <input type="text" id="ticket-transcript-channel" placeholder="Channel for transcripts" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save Settings</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="economy-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Economy Settings</h2>
+                                <form id="economy-form" class="mt-4 space-y-4">
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="currency-name">Currency Name</label>
+                                            <input type="text" id="currency-name" value="{{ config.currency_name or 'coins' }}" placeholder="coins" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="currency-emoji">Currency Emoji</label>
+                                            <input type="text" id="currency-emoji" value="{{ config.currency_emoji or '🪙' }}" placeholder="🪙" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="daily-amount">Daily Reward Amount</label>
+                                        <input type="number" id="daily-amount" value="{{ config.daily_amount or 1000 }}" min="1" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save Economy Settings</button>
+                                </form>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h3 class="text-lg font-semibold text-slate-50">Economy Commands</h3>
+                                <ul class="mt-3 space-y-2 text-sm text-slate-300">
+                                    <li><code class="text-indigo-300">/balance [user]</code> - Check balance</li>
+                                    <li><code class="text-indigo-300">/daily</code> - Claim daily reward</li>
+                                    <li><code class="text-indigo-300">/work</code> - Work for money (1hr cooldown)</li>
+                                    <li><code class="text-indigo-300">/pay &lt;user&gt; &lt;amount&gt;</code> - Transfer money</li>
+                                    <li><code class="text-indigo-300">/leaderboard</code> - View economy leaderboard</li>
+                                    <li><code class="text-indigo-300">/addmoney &lt;user&gt; &lt;amount&gt;</code> - Add money (Admin)</li>
+                                    <li><code class="text-indigo-300">/removemoney &lt;user&gt; &lt;amount&gt;</code> - Remove money (Admin)</li>
                                 </ul>
                             </div>
-                            
-                            <div class="template-card" onclick="applyTemplate('community')">
-                                <div class="template-icon">💬</div>
-                                <h4>Community Server</h4>
-                                <p>Great for general communities with discussions, events, and social channels</p>
-                                <ul class="template-features">
-                                    <li>Welcome and rules</li>
-                                    <li>Discussion channels</li>
-                                    <li>Events and announcements</li>
-                                    <li>Social features</li>
+                        </div>
+                    </div>
+
+                    <div id="leveling-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-3">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40 lg:col-span-2">
+                                <h2 class="text-xl font-semibold text-slate-50">Leveling Quick Setup</h2>
+                                <form id="leveling-quick-setup-form" class="mt-4 space-y-4">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="level-milestones">Level Milestones (comma-separated)</label>
+                                        <input type="text" id="level-milestones" value="5,10,20,30,50,80,100" placeholder="5,10,20,30,50,80,100" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        <p class="mt-1 text-xs text-slate-500">These levels will get special colored roles automatically.</p>
+                                    </div>
+                                    <label class="flex items-center gap-2 text-sm text-slate-300">
+                                        <input type="checkbox" id="create-info-channel" checked class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                        Create leveling info channel
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm text-slate-300">
+                                        <input type="checkbox" id="create-rules-channel" class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                        Create server rules channel
+                                    </label>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Auto-Setup Leveling</button>
+                                </form>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Leveling Settings</h3>
+                                    <form id="leveling-form" class="mt-3 space-y-3">
+                                        <label class="flex items-center gap-2 text-sm text-slate-300">
+                                            <input type="checkbox" id="leveling-enabled" {% if config.leveling_enabled != False %}checked{% endif %} class="h-4 w-4 rounded border-slate-700 bg-slate-900">
+                                            Enable Leveling
+                                        </label>
+                                        <div class="grid gap-3 md:grid-cols-2">
+                                            <div>
+                                                <label class="text-sm text-slate-400" for="xp-min">Min XP per Message</label>
+                                                <input type="number" id="xp-min" value="{{ config.xp_min or 15 }}" min="1" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                            </div>
+                                            <div>
+                                                <label class="text-sm text-slate-400" for="xp-max">Max XP per Message</label>
+                                                <input type="number" id="xp-max" value="{{ config.xp_max or 25 }}" min="1" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="level-up-channel">Level Up Announcement Channel ID (optional)</label>
+                                            <input type="text" id="level-up-channel" value="{{ config.level_up_channel_id or '' }}" placeholder="Leave empty for current channel" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <button type="submit" class="w-full rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save Leveling Settings</button>
+                                    </form>
+                                </div>
+                                <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                    <h3 class="text-lg font-semibold text-slate-50">Level Role Rewards</h3>
+                                    <p class="text-sm text-slate-400">Automatically grant roles at specific levels.</p>
+                                    <form id="level-role-form" class="mt-4 space-y-3">
+                                        <div class="grid gap-3 md:grid-cols-2">
+                                            <div>
+                                                <label class="text-sm text-slate-400" for="level-number">Level</label>
+                                                <input type="number" id="level-number" placeholder="5" min="1" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required>
+                                            </div>
+                                            <div>
+                                                <label class="text-sm text-slate-400" for="level-role-id">Role ID</label>
+                                                <input type="text" id="level-role-id" placeholder="Enter role ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="w-full rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Add Level Role</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="giveaways-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Giveaway Creator</h2>
+                                <form id="giveaway-form" class="mt-4 space-y-4">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="giveaway-channel">Channel ID</label>
+                                        <input type="text" id="giveaway-channel" placeholder="Enter channel ID" required class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="giveaway-prize">Prize</label>
+                                        <input type="text" id="giveaway-prize" placeholder="Discord Nitro" required class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="giveaway-description">Description (optional)</label>
+                                        <textarea id="giveaway-description" rows="3" placeholder="Additional giveaway details..." class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"></textarea>
+                                    </div>
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="giveaway-duration">Duration (minutes)</label>
+                                            <input type="number" id="giveaway-duration" placeholder="60" min="1" required class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                        <div>
+                                            <label class="text-sm text-slate-400" for="giveaway-winners">Number of Winners</label>
+                                            <input type="number" id="giveaway-winners" placeholder="1" min="1" value="1" required class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Start Giveaway</button>
+                                </form>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h3 class="text-lg font-semibold text-slate-50">Giveaway Commands</h3>
+                                <ul class="mt-3 space-y-2 text-sm text-slate-300">
+                                    <li><code class="text-indigo-300">/giveaway_start &lt;duration&gt; &lt;winners&gt; &lt;prize&gt;</code> - Start a giveaway</li>
+                                    <li><code class="text-indigo-300">/giveaway_end &lt;message_id&gt;</code> - End giveaway early</li>
+                                    <li>Users react with 🎉 to enter</li>
                                 </ul>
                             </div>
-                            
-                            <div class="template-card" onclick="applyTemplate('support')">
-                                <div class="template-icon">🎫</div>
-                                <h4>Support Server</h4>
-                                <p>Ideal for customer support with tickets, FAQ, and help channels</p>
-                                <ul class="template-features">
-                                    <li>Ticket system</li>
-                                    <li>FAQ channels</li>
-                                    <li>Support categories</li>
-                                    <li>Staff roles</li>
+                        </div>
+                    </div>
+
+                    <div id="moderation-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Mod Log Channel</h2>
+                                <form id="modlog-form" class="mt-4 space-y-3">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="modlog-channel">Channel ID</label>
+                                        <input type="text" id="modlog-channel" value="{{ config.modlog_channel_id or '' }}" placeholder="Enter channel ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
+                                        <p class="mt-1 text-xs text-slate-500">All moderation actions will be logged here.</p>
+                                    </div>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save</button>
+                                </form>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h3 class="text-lg font-semibold text-slate-50">Moderation Commands</h3>
+                                <ul class="mt-3 space-y-2 text-sm text-slate-300">
+                                    <li><code class="text-indigo-300">/kick</code> - Kick a member</li>
+                                    <li><code class="text-indigo-300">/ban</code> - Ban a member</li>
+                                    <li><code class="text-indigo-300">/unban</code> - Unban a user</li>
+                                    <li><code class="text-indigo-300">/timeout</code> - Timeout a member</li>
+                                    <li><code class="text-indigo-300">/warn</code> - Warn a member</li>
+                                    <li><code class="text-indigo-300">/warnings</code> - View member warnings</li>
+                                    <li><code class="text-indigo-300">/clearwarnings</code> - Clear member warnings</li>
+                                    <li><code class="text-indigo-300">/purge</code> - Delete multiple messages</li>
+                                    <li><code class="text-indigo-300">/slowmode</code> - Set channel slowmode</li>
                                 </ul>
                             </div>
-                            
-                            <div class="template-card" onclick="applyTemplate('creative')">
-                                <div class="template-icon">🎨</div>
-                                <h4>Creative Server</h4>
-                                <p>For artists, writers, and creators to share and collaborate</p>
-                                <ul class="template-features">
-                                    <li>Showcase channels</li>
-                                    <li>Feedback forums</li>
-                                    <li>Collaboration areas</li>
-                                    <li>Creative roles</li>
-                                </ul>
-                            </div>
                         </div>
                     </div>
-                    
-                    <div class="card">
-                        <h3>Custom Setup</h3>
-                        <p>Or create your own custom server structure</p>
-                        <button class="btn btn-secondary" onclick="openCustomSetup()">Custom Setup</button>
-                    </div>
-                </div>
 
-                <!-- Custom Commands Section -->
-                <div id="custom-commands-section" class="dashboard-section">
-                    <h2 class="section-title">Custom Commands</h2>
-                    
-                    <div class="card">
-                        <h3>Create New Command</h3>
-                        <form id="create-command-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="cmd-name">Command Name</label>
-                                    <input type="text" id="cmd-name" placeholder="ping" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="cmd-type">Type</label>
-                                    <select id="cmd-type">
-                                        <option value="text">Text Response</option>
-                                        <option value="embed">Embed Response</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="cmd-response">Response</label>
-                                <textarea id="cmd-response" rows="4" placeholder="Pong! Bot is online." required></textarea>
-                                <small>Variables: {user}, {user.name}, {server}, {channel}, {membercount}</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="cmd-embed">
-                                    Send as embed
-                                </label>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Create Command</button>
-                        </form>
+                    <div id="reaction-roles-section" class="dashboard-section hidden space-y-6">
+                        <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                            <h2 class="text-xl font-semibold text-slate-50">Reaction Roles</h2>
+                            <ol class="mt-3 space-y-2 text-sm text-slate-300">
+                                <li>Use <code class="text-indigo-300">/reactionrole_create</code> to create a reaction role panel.</li>
+                                <li>Use <code class="text-indigo-300">/reactionrole_add</code> with the message ID to add role reactions.</li>
+                                <li>Use <code class="text-indigo-300">/reactionrole_list</code> to view all configured reaction roles.</li>
+                            </ol>
+                        </div>
                     </div>
 
-                    <div class="card">
-                        <h3>Existing Commands ({{ custom_commands|length }})</h3>
-                        <div id="commands-list">
-                            {% if custom_commands %}
-                                {% for cmd in custom_commands %}
-                                <div class="command-item">
-                                    <div class="command-info">
-                                        <span class="command-name">!{{ cmd.command_name }}</span>
-                                        <span class="command-response">{{ cmd.response[:50] }}{% if cmd.response|length > 50 %}...{% endif %}</span>
+                    <div id="welcome-section" class="dashboard-section hidden space-y-6">
+                        <div class="grid gap-6 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Welcome Channel</h2>
+                                <form id="welcome-form" class="mt-4 space-y-3">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="welcome-channel">Channel ID</label>
+                                        <input type="text" id="welcome-channel" value="{{ config.welcome_channel_id or '' }}" placeholder="Enter channel ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
                                     </div>
-                                    <div class="command-actions">
-                                        <button class="btn btn-small btn-secondary" onclick="editCommand('{{ cmd.command_name }}')">Edit</button>
-                                        <button class="btn btn-small btn-danger" onclick="deleteCommand('{{ cmd.command_name }}')">Delete</button>
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="welcome-message">Welcome Message</label>
+                                        <textarea id="welcome-message" rows="3" placeholder="Welcome {user} to {server}!" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">{{ config.welcome_message or '' }}</textarea>
+                                        <p class="mt-1 text-xs text-slate-500">Variables: {user}, {server}, {membercount}</p>
                                     </div>
-                                </div>
-                                {% endfor %}
-                            {% else %}
-                                <p class="empty-text">No custom commands yet. Create one above!</p>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Embed Maker Section -->
-                <div id="embed-maker-section" class="dashboard-section">
-                    <h2 class="section-title">Embed Maker</h2>
-                    
-                    <div class="embed-builder">
-                        <div class="embed-editor">
-                            <div class="card">
-                                <h3>Embed Editor</h3>
-                                
-                                <div class="form-group">
-                                    <label for="embed-title">Title</label>
-                                    <input type="text" id="embed-title" placeholder="Embed Title" oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-description">Description</label>
-                                    <textarea id="embed-description" rows="4" placeholder="Embed description..." oninput="updateEmbedPreview()"></textarea>
-                                </div>
-                                
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="embed-color">Color</label>
-                                        <input type="color" id="embed-color" value="#5865F2" oninput="updateEmbedPreview()">
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save</button>
+                                </form>
+                            </div>
+                            <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                                <h2 class="text-xl font-semibold text-slate-50">Leave Message</h2>
+                                <form id="leave-form" class="mt-4 space-y-3">
+                                    <div>
+                                        <label class="text-sm text-slate-400" for="leave-message">Leave Message</label>
+                                        <textarea id="leave-message" rows="3" placeholder="{user} has left the server." class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">{{ config.leave_message or '' }}</textarea>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="embed-timestamp">Add Timestamp</label>
-                                        <input type="checkbox" id="embed-timestamp" onchange="updateEmbedPreview()">
-                                    </div>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-author-name">Author Name</label>
-                                    <input type="text" id="embed-author-name" placeholder="Author name" oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-author-icon">Author Icon URL</label>
-                                    <input type="url" id="embed-author-icon" placeholder="https://..." oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-thumbnail">Thumbnail URL</label>
-                                    <input type="url" id="embed-thumbnail" placeholder="https://..." oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-image">Image URL</label>
-                                    <input type="url" id="embed-image" placeholder="https://..." oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-footer">Footer Text</label>
-                                    <input type="text" id="embed-footer" placeholder="Footer text" oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-footer-icon">Footer Icon URL</label>
-                                    <input type="url" id="embed-footer-icon" placeholder="https://..." oninput="updateEmbedPreview()">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="embed-channel">Send to Channel ID</label>
-                                    <input type="text" id="embed-channel" placeholder="Enter channel ID">
-                                </div>
-                                
-                                <button class="btn btn-primary" onclick="sendEmbed()">Send Embed</button>
-                                <button class="btn btn-secondary" onclick="exportEmbedJSON()">Export JSON</button>
-                            </div>
-                        </div>
-                        
-                        <div class="embed-preview-container">
-                            <div class="card">
-                                <h3>Live Preview</h3>
-                                <div id="embed-preview" class="embed-preview">
-                                    <div class="embed-message">
-                                        <!-- Preview will be rendered here -->
-                                    </div>
-                                </div>
+                                    <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save</button>
+                                </form>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Announcements Section -->
-                <div id="announcements-section" class="dashboard-section">
-                    <h2 class="section-title">Announcements</h2>
-                    
-                    <div class="card">
-                        <h3>Send Announcement</h3>
-                        <form id="announcement-form">
-                            <div class="form-group">
-                                <label for="announcement-channel">Channel ID</label>
-                                <input type="text" id="announcement-channel" placeholder="Enter channel ID" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="announcement-type">Type</label>
-                                <select id="announcement-type">
-                                    <option value="normal">Normal Message</option>
-                                    <option value="embed">Embed</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="announcement-content">Content</label>
-                                <textarea id="announcement-content" rows="6" placeholder="Announcement message..." required></textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="announcement-mention-everyone">
-                                    Mention @everyone
-                                </label>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary">Send Announcement</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Role Manager Section -->
-                <div id="roles-section" class="dashboard-section">
-                    <h2 class="section-title">🎭 Role Manager</h2>
-                    
-                    <div class="card">
-                        <h3>Quick Templates</h3>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
-                            <button class="btn btn-secondary" onclick="applyRoleTemplate('gaming')">🎮 Gaming Roles</button>
-                            <button class="btn btn-secondary" onclick="applyRoleTemplate('staff')">👮 Staff Roles</button>
-                            <button class="btn btn-secondary" onclick="applyRoleTemplate('community')">🌟 Community Roles</button>
-                            <button class="btn btn-secondary" onclick="applyRoleTemplate('colors')">🌈 Color Roles</button>
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Create New Role</h3>
-                        <form id="create-role-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="role-name">Role Name</label>
-                                    <input type="text" id="role-name" placeholder="Member" required>
+                    <div id="settings-section" class="dashboard-section hidden space-y-6">
+                        <div class="rounded-2xl border border-white/5 bg-white/5 p-6 shadow-xl shadow-black/40">
+                            <h2 class="text-xl font-semibold text-slate-50">Bot Settings</h2>
+                            <form id="settings-form" class="mt-4 space-y-4">
+                                <div>
+                                    <label class="text-sm text-slate-400" for="prefix">Command Prefix</label>
+                                    <input type="text" id="prefix" value="{{ config.prefix or '!' }}" maxlength="5" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
                                 </div>
-                                <div class="form-group">
-                                    <label for="role-color">Color (Hex)</label>
-                                    <div style="display: flex; gap: 10px; align-items: center;">
-                                        <input type="color" id="role-color" value="#99AAB5" style="width: 60px; height: 40px;">
-                                        <input type="text" id="role-color-hex" value="#99AAB5" placeholder="#99AAB5" style="flex: 1;">
-                                        <div id="role-color-preview" style="width: 40px; height: 40px; border-radius: 5px; background: #99AAB5; border: 2px solid var(--border);"></div>
-                                    </div>
+                                <div>
+                                    <label class="text-sm text-slate-400" for="auto-role">Auto Role ID (assigned on join)</label>
+                                    <input type="text" id="auto-role" value="{{ config.auto_role_id or '' }}" placeholder="Enter role ID" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30">
                                 </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label>Permissions</label>
-                                <div class="permissions-grid">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="kick_members">
-                                        Kick Members
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="ban_members">
-                                        Ban Members
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="manage_channels">
-                                        Manage Channels
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="manage_roles">
-                                        Manage Roles
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="manage_messages">
-                                        Manage Messages
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" class="role-perm" value="mention_everyone">
-                                        Mention Everyone
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="role-hoist">
-                                    Display role members separately
-                                </label>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="role-mentionable">
-                                    Allow anyone to mention this role
-                                </label>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary">Create Role</button>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Bulk Role Creator</h3>
-                        <p>Create multiple roles at once</p>
-                        <div class="form-group">
-                            <label for="bulk-roles">Role Names (one per line)</label>
-                            <textarea id="bulk-roles" rows="6" placeholder="Member&#10;Moderator&#10;VIP&#10;Premium"></textarea>
-                        </div>
-                        <button class="btn btn-secondary" onclick="createBulkRoles()">Create All Roles</button>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Server Roles</h3>
-                        <div id="roles-list" style="max-height: 400px; overflow-y: auto;">
-                            <p>Loading roles...</p>
+                                <button type="submit" class="rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Save Settings</button>
+                            </form>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Server Appearance Section -->
-                <div id="appearance-section" class="dashboard-section">
-                    <h2 class="section-title">🎨 Server Appearance</h2>
-                    
-                    <div class="card">
-                        <h3>Theme Presets</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                            <div class="theme-card" onclick="applyTheme('dark')">
-                                <div style="background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
-                                <h4>Dark Mode</h4>
-                                <p>Classic dark theme</p>
-                            </div>
-                            <div class="theme-card" onclick="applyTheme('purple')">
-                                <div style="background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
-                                <h4>Discord Purple</h4>
-                                <p>Classic Discord colors</p>
-                            </div>
-                            <div class="theme-card" onclick="applyTheme('gaming')">
-                                <div style="background: linear-gradient(135deg, #00ff88 0%, #00ccff 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
-                                <h4>Gaming Neon</h4>
-                                <p>Vibrant gaming theme</p>
-                            </div>
-                            <div class="theme-card" onclick="applyTheme('sunset')">
-                                <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ffd93d 100%); height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
-                                <h4>Sunset</h4>
-                                <p>Warm sunset colors</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Server Icon & Banner</h3>
-                        <p style="color: #b9bbbe; margin-bottom: 15px;">Upload your server icon and banner directly in Discord</p>
-                        <button class="btn btn-secondary" onclick="window.open('https://discord.com/channels/{{ guild.id }}', '_blank')">Open Server Settings</button>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Custom Color Scheme</h3>
-                        <form id="color-scheme-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Primary Color</label>
-                                    <input type="color" id="primary-color" value="#5865F2">
-                                </div>
-                                <div class="form-group">
-                                    <label>Accent Color</label>
-                                    <input type="color" id="accent-color" value="#7289DA">
-                                </div>
-                                <div class="form-group">
-                                    <label>Success Color</label>
-                                    <input type="color" id="success-color" value="#43B581">
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Apply Custom Colors</button>
-                        </form>
-                    </div>
-                </div>
-                
-                <!-- Ticketing Section -->
-                <div id="ticketing-section" class="dashboard-section">
-                    <h2 class="section-title">🎫 Ticket System</h2>
-                    
-                    <div class="card">
-                        <h3>Ticket Panel Setup</h3>
-                        <form id="ticket-panel-form">
-                            <div class="form-group">
-                                <label for="ticket-channel">Ticket Panel Channel ID</label>
-                                <input type="text" id="ticket-channel" placeholder="Enter channel ID">
-                                <small>The bot will send the ticket panel to this channel</small>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Send Ticket Panel</button>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Ticket Categories</h3>
-                        <form id="ticket-categories-form">
-                            <div id="ticket-categories-list">
-                                <div class="ticket-category-item">
-                                    <input type="text" placeholder="Support" style="flex: 1;">
-                                    <input type="text" placeholder="📩" style="width: 60px;">
-                                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">❌</button>
-                                </div>
-                                <div class="ticket-category-item">
-                                    <input type="text" placeholder="Reports" style="flex: 1;">
-                                    <input type="text" placeholder="⚠️" style="width: 60px;">
-                                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()">❌</button>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-secondary" onclick="addTicketCategory()">+ Add Category</button>
-                            <button type="submit" class="btn btn-primary">Save Categories</button>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Ticket Settings</h3>
-                        <form id="ticket-settings-form">
-                            <div class="form-group">
-                                <label for="ticket-category-id">Ticket Category ID</label>
-                                <input type="text" id="ticket-category-id" placeholder="Category ID for tickets">
-                                <small>All ticket channels will be created in this category</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="ticket-transcripts">
-                                    Save ticket transcripts
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label for="ticket-transcript-channel">Transcript Channel ID</label>
-                                <input type="text" id="ticket-transcript-channel" placeholder="Channel for transcripts">
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save Settings</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Moderation Section -->
-                <div id="moderation-section" class="dashboard-section">
-                    <h2 class="section-title">Moderation Settings</h2>
-                    
-                    <div class="card">
-                        <h3>Mod Log Channel</h3>
-                        <form id="modlog-form">
-                            <div class="form-group">
-                                <label for="modlog-channel">Channel ID</label>
-                                <input type="text" id="modlog-channel" value="{{ config.modlog_channel_id or '' }}" placeholder="Enter channel ID">
-                                <small>All moderation actions will be logged here</small>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save</button>
-                        </form>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>Available Moderation Commands</h3>
-                        <ul class="command-list">
-                            <li><code>/kick</code> - Kick a member</li>
-                            <li><code>/ban</code> - Ban a member</li>
-                            <li><code>/unban</code> - Unban a user</li>
-                            <li><code>/timeout</code> - Timeout a member</li>
-                            <li><code>/warn</code> - Warn a member</li>
-                            <li><code>/warnings</code> - View member warnings</li>
-                            <li><code>/clearwarnings</code> - Clear member warnings</li>
-                            <li><code>/purge</code> - Delete multiple messages</li>
-                            <li><code>/slowmode</code> - Set channel slowmode</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Economy Section -->
-                <div id="economy-section" class="dashboard-section">
-                    <h2 class="section-title">💰 Economy System</h2>
-                    
-                    <div class="card">
-                        <h3>Currency Settings</h3>
-                        <form id="economy-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="currency-name">Currency Name</label>
-                                    <input type="text" id="currency-name" value="{{ config.currency_name or 'coins' }}" placeholder="coins">
-                                </div>
-                                <div class="form-group">
-                                    <label for="currency-emoji">Currency Emoji</label>
-                                    <input type="text" id="currency-emoji" value="{{ config.currency_emoji or '💰' }}" placeholder="💰">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="daily-amount">Daily Reward Amount</label>
-                                <input type="number" id="daily-amount" value="{{ config.daily_amount or 1000 }}" min="1">
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save Economy Settings</button>
-                        </form>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h3>Economy Commands</h3>
-                        <ul class="command-list">
-                            <li><code>/balance [user]</code> - Check balance</li>
-                            <li><code>/daily</code> - Claim daily reward</li>
-                            <li><code>/work</code> - Work for money (1hr cooldown)</li>
-                            <li><code>/pay &lt;user&gt; &lt;amount&gt;</code> - Transfer money</li>
-                            <li><code>/leaderboard</code> - View economy leaderboard</li>
-                            <li><code>/addmoney &lt;user&gt; &lt;amount&gt;</code> - Add money (Admin)</li>
-                            <li><code>/removemoney &lt;user&gt; &lt;amount&gt;</code> - Remove money (Admin)</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Leveling Section -->
-                <div id="leveling-section" class="dashboard-section">
-                    <h2 class="section-title">📊 Leveling System</h2>
-                    
-                    <div class="card">
-                        <h3>Quick Setup</h3>
-                        <p>Automatically create level roles and info channels for your server.</p>
-                        <form id="leveling-quick-setup-form">
-                            <div class="form-group">
-                                <label for="level-milestones">Level Milestones (comma-separated)</label>
-                                <input type="text" id="level-milestones" value="5,10,20,30,50,80,100" placeholder="5,10,20,30,50,80,100">
-                                <small>These levels will get special colored roles automatically</small>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="create-info-channel" checked>
-                                    Create leveling info channel
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="create-rules-channel">
-                                    Create server rules channel
-                                </label>
-                            </div>
-                            <button type="submit" class="btn btn-primary">🚀 Auto-Setup Leveling System</button>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Leveling Settings</h3>
-                        <form id="leveling-form">
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="leveling-enabled" {% if config.leveling_enabled != False %}checked{% endif %}>
-                                    Enable Leveling System
-                                </label>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="xp-min">Min XP per Message</label>
-                                    <input type="number" id="xp-min" value="{{ config.xp_min or 15 }}" min="1">
-                                </div>
-                                <div class="form-group">
-                                    <label for="xp-max">Max XP per Message</label>
-                                    <input type="number" id="xp-max" value="{{ config.xp_max or 25 }}" min="1">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="level-up-channel">Level Up Announcement Channel ID (optional)</label>
-                                <input type="text" id="level-up-channel" value="{{ config.level_up_channel_id or '' }}" placeholder="Leave empty for current channel">
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save Leveling Settings</button>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Level Role Rewards</h3>
-                        <p>Set roles that users automatically receive when reaching certain levels.</p>
-                        <form id="level-role-form">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="level-number">Level</label>
-                                    <input type="number" id="level-number" placeholder="5" min="1" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="level-role-id">Role ID</label>
-                                    <input type="text" id="level-role-id" placeholder="Enter role ID" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Add Level Role</button>
-                        </form>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h3>Leveling Commands</h3>
-                        <ul class="command-list">
-                            <li><code>/rank [user]</code> - Check rank and level</li>
-                            <li><code>/levels</code> - View XP leaderboard</li>
-                            <li><code>/setlevel &lt;user&gt; &lt;level&gt;</code> - Set user level (Admin)</li>
-                            <li><code>/addxp &lt;user&gt; &lt;amount&gt;</code> - Add XP (Admin)</li>
-                            <li><code>/levelrole &lt;level&gt; &lt;role&gt;</code> - Set level role reward (Admin)</li>
-                            <li><code>/removelevelrole &lt;level&gt;</code> - Remove level role (Admin)</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Giveaways Section -->
-                <div id="giveaways-section" class="dashboard-section">
-                    <h2 class="section-title">🎉 Giveaway System</h2>
-                    
-                    <div class="card">
-                        <h3>Create Giveaway</h3>
-                        <form id="giveaway-form">
-                            <div class="form-group">
-                                <label for="giveaway-channel">Channel ID</label>
-                                <input type="text" id="giveaway-channel" placeholder="Enter channel ID" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="giveaway-prize">Prize</label>
-                                <input type="text" id="giveaway-prize" placeholder="Discord Nitro" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="giveaway-description">Description (optional)</label>
-                                <textarea id="giveaway-description" rows="3" placeholder="Additional giveaway details..."></textarea>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="giveaway-duration">Duration (minutes)</label>
-                                    <input type="number" id="giveaway-duration" placeholder="60" min="1" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="giveaway-winners">Number of Winners</label>
-                                    <input type="number" id="giveaway-winners" placeholder="1" min="1" value="1" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Start Giveaway</button>
-                        </form>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h3>Giveaway Commands</h3>
-                        <ul class="command-list">
-                            <li><code>/giveaway_start &lt;duration&gt; &lt;winners&gt; &lt;prize&gt;</code> - Start a giveaway</li>
-                            <li><code>/giveaway_end &lt;message_id&gt;</code> - End giveaway early</li>
-                            <li>Users react with 🎉 to enter</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Reaction Roles Section -->
-                <div id="reaction-roles-section" class="dashboard-section">
-                    <h2 class="section-title">Reaction Roles</h2>
-                    
-                    <div class="info-card">
-                        <h3>Setup Instructions</h3>
-                        <ol>
-                            <li>Use <code>/reactionrole_create</code> to create a reaction role panel in a channel</li>
-                            <li>Use <code>/reactionrole_add</code> with the message ID to add role reactions</li>
-                            <li>Use <code>/reactionrole_list</code> to view all configured reaction roles</li>
-                        </ol>
-                    </div>
-                </div>
-
-                <!-- Welcome Section -->
-                <div id="welcome-section" class="dashboard-section">
-                    <h2 class="section-title">Welcome & Leave Messages</h2>
-                    
-                    <div class="card">
-                        <h3>Welcome Channel</h3>
-                        <form id="welcome-form">
-                            <div class="form-group">
-                                <label for="welcome-channel">Channel ID</label>
-                                <input type="text" id="welcome-channel" value="{{ config.welcome_channel_id or '' }}" placeholder="Enter channel ID">
-                            </div>
-                            <div class="form-group">
-                                <label for="welcome-message">Welcome Message</label>
-                                <textarea id="welcome-message" rows="3" placeholder="Welcome {user} to {server}!">{{ config.welcome_message or '' }}</textarea>
-                                <small>Variables: {user}, {server}, {membercount}</small>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save</button>
-                        </form>
-                    </div>
-
-                    <div class="card">
-                        <h3>Leave Message</h3>
-                        <form id="leave-form">
-                            <div class="form-group">
-                                <label for="leave-message">Leave Message</label>
-                                <textarea id="leave-message" rows="3" placeholder="{user} has left the server.">{{ config.leave_message or '' }}</textarea>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Settings Section -->
-                <div id="settings-section" class="dashboard-section">
-                    <h2 class="section-title">Bot Settings</h2>
-                    
-                    <div class="card">
-                        <h3>General Settings</h3>
-                        <form id="settings-form">
-                            <div class="form-group">
-                                <label for="prefix">Command Prefix</label>
-                                <input type="text" id="prefix" value="{{ config.prefix or '!' }}" maxlength="5">
-                            </div>
-                            <div class="form-group">
-                                <label for="auto-role">Auto Role ID (assigned on join)</label>
-                                <input type="text" id="auto-role" value="{{ config.auto_role_id or '' }}" placeholder="Enter role ID">
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save Settings</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+            </main>
         </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script>
-        const guildId = "{{ guild.id }}";
-        
-        // Initialize embed preview
+        const guildId = {{ guild.id }};
         updateEmbedPreview();
     </script>
 </body>

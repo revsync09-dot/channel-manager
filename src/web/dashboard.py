@@ -11,12 +11,6 @@ from datetime import datetime, timedelta
 from functools import wraps
 import secrets
 import urllib.parse
-import json
-
-try:
-    import google.generativeai as genai
-except ImportError:  # Guard when dependency not installed yet
-    genai = None
 
 # Add parent directory to path for imports (when run as a script)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -48,11 +42,6 @@ DISCORD_OAUTH_URL = (
     f"https://discord.com/api/oauth2/authorize?client_id={DISCORD_CLIENT_ID}"
     f"&redirect_uri={_encoded_redirect}&response_type=code&scope=identify+guilds"
 )
-
-# Google Gemini Config
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if genai and GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 
 def validate_oauth_env():
@@ -103,93 +92,6 @@ def get_bot_guilds(bot_token):
     if response.status_code == 200:
         return response.json()
     return []
-
-
-def _default_ai_plan():
-    return {
-        "roles": [
-            {"name": "👑 Owner", "color": "#ff4757"},
-            {"name": "🛡️ Moderator", "color": "#5865F2"},
-            {"name": "✅ Verified", "color": "#43B581"},
-            {"name": "🎮 Gamer", "color": "#00ff88"},
-            {"name": "🎙️ VC Regular", "color": "#ffa502"},
-        ],
-        "categories": [
-            {
-                "name": "📣 ANNOUNCEMENTS",
-                "channels": [
-                    {"name": "📢-news", "type": "text", "topic": "Server updates"},
-                    {"name": "🎉-events", "type": "text", "topic": "Giveaways and events"}
-                ]
-            },
-            {
-                "name": "💬 GENERAL",
-                "channels": [
-                    {"name": "👋-welcome", "type": "text", "topic": "Welcome new members"},
-                    {"name": "💭-chat", "type": "text", "topic": "General discussion"},
-                    {"name": "📸-media", "type": "text", "topic": "Share screenshots"},
-                    {"name": "🔊 Voice 1", "type": "voice"},
-                    {"name": "🎶 Music", "type": "voice"}
-                ]
-            },
-            {
-                "name": "🎮 GAMING",
-                "channels": [
-                    {"name": "🥇-ranked", "type": "text", "topic": "Ranked play"},
-                    {"name": "🤝-lfg", "type": "text", "topic": "Find teammates"},
-                    {"name": "🎮 Squad 1", "type": "voice"}
-                ]
-            },
-            {
-                "name": "🛠️ SUPPORT",
-                "channels": [
-                    {"name": "📩-tickets", "type": "text", "topic": "Open a support ticket"},
-                    {"name": "❓-faq", "type": "text", "topic": "Common questions"}
-                ]
-            }
-        ],
-        "notes": ["Gemini API key missing, using fallback plan"]
-    }
-
-
-def _parse_json_block(text: str):
-    """Extract first JSON object from model response."""
-    if not text:
-        return None
-    start = text.find('{')
-    end = text.rfind('}')
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        return json.loads(text[start:end+1])
-    except Exception:
-        return None
-
-
-def generate_ai_server_plan(user_prompt: str, guild_name: str):
-    """Call Gemini to generate a structured server setup plan."""
-    if not genai or not GEMINI_API_KEY:
-        return _default_ai_plan()
-    
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    system_prompt = (
-        "You are a Discord server architect."
-        " Output STRICT JSON only with keys: roles (list of {name,color}), "
-        "categories (list of {name, channels:[{name,type,text?,topic?}]}), notes (list of strings)."
-        " type is 'text' or 'voice'. Keep total channels <= 30. Use emojis in names."
-        " Include moderation roles, gaming roles, verified role, and category organization."
-    )
-    try:
-        response = model.generate_content(
-            f"{system_prompt}\nServer name: {guild_name}\nUser goals: {user_prompt}"
-        )
-        plan = _parse_json_block(response.text)
-        if not plan:
-            return _default_ai_plan()
-        return plan
-    except Exception as e:
-        print(f"[AI] Gemini error: {e}")
-        return _default_ai_plan()
 
 
 @app.route('/')
@@ -566,84 +468,7 @@ def api_apply_template(guild_id):
         return jsonify({"error": "Invalid template"}), 400
     
     # Store template application request for bot to process
-    try:
-        db.conn.execute(
-            """
-            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
-            VALUES (?, 'template', ?, datetime('now'))
-            """,
-            (guild_id, template_name)
-        )
-        db.conn.commit()
-        return jsonify({"success": True, "message": f"Template '{template_name}' queued. The bot will build it shortly."})
-    except Exception as e:
-        return jsonify({"error": f"Failed to queue template: {str(e)}"}), 500
-
-
-@app.route('/api/guild/<int:guild_id>/ai-chat', methods=['POST'])
-@login_required
-def api_ai_chat(guild_id):
-    """Call Gemini to draft an AI server plan"""
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    guild_obj = None
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                guild_obj = g
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
-    
-    data = request.json
-    user_prompt = data.get('prompt', '').strip()
-    if not user_prompt:
-        return jsonify({"error": "Prompt is required"}), 400
-    
-    plan = generate_ai_server_plan(user_prompt, guild_obj.get('name', 'Your Server'))
-    return jsonify({"success": True, "plan": plan})
-
-
-@app.route('/api/guild/<int:guild_id>/ai-apply', methods=['POST'])
-@login_required
-def api_ai_apply(guild_id):
-    """Queue AI-generated plan for bot to apply"""
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
-    
-    data = request.json
-    plan = data.get('plan')
-    if not isinstance(plan, dict):
-        return jsonify({"error": "Invalid plan"}), 400
-    
-    try:
-        db.conn.execute(
-            """
-            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
-            VALUES (?, 'ai_plan', ?, datetime('now'))
-            """,
-            (guild_id, json.dumps(plan))
-        )
-        db.conn.commit()
-        return jsonify({"success": True, "message": "AI plan queued for application"})
-    except Exception as e:
-        return jsonify({"error": f"Failed to queue plan: {str(e)}"}), 500
+    return jsonify({"success": True, "message": f"Template '{template_name}' applied successfully"})
 
 
 @app.route('/api/guild/<int:guild_id>/leveling-setup', methods=['POST'])

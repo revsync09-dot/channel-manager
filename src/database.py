@@ -11,10 +11,6 @@ class Database:
     def __init__(self, db_path: str = "bot_data.db"):
         self.db_path = db_path
         self.init_database()
-        # Keep a shared connection for simple inserts used by the dashboard.
-        # check_same_thread=False allows access from Flask and bot threads.
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
     
     def init_database(self):
         """Initialize database tables"""

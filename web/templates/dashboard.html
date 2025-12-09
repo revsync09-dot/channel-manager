@@ -4,59 +4,196 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Channel Manager</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: '#0d0f12',
+                        panel: '#111827',
+                        accent: '#6b8bff'
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <div class="dashboard-layout">
-        <nav class="dashboard-nav">
-            <div class="nav-container">
-                <div class="nav-brand">
-                    <img src="https://media.discordapp.net/attachments/1443222738750668952/1446618834638471259/Channel-manager.png" alt="Channel Manager" class="nav-logo">
-                    <span class="nav-title">Channel Manager</span>
+<body class="min-h-screen bg-gradient-to-br from-[#0d0f12] via-[#0f172a] to-[#0b1020] text-slate-100">
+    <div class="flex min-h-screen">
+        <aside class="hidden w-64 flex-shrink-0 flex-col gap-4 border-r border-white/5 bg-white/5/40 px-4 py-6 backdrop-blur lg:flex">
+            <div class="flex items-center gap-3 rounded-2xl bg-white/5 px-3 py-2">
+                {% set logo_webp = url_for('static', filename='assets/logo.webp') %}
+                {% set logo_png = url_for('static', filename='assets/logo.png') %}
+                {% set logo_svg = url_for('static', filename='assets/logo.svg') %}
+                <div class="relative h-11 w-11 overflow-hidden rounded-xl bg-indigo-500/20">
+                    <img src="{{ logo_webp }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    <img src="{{ logo_png }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    <img src="{{ logo_svg }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
                 </div>
-                <div class="nav-user">
-                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="user-avatar">
-                    <span class="user-name">{{ user.username }}</span>
-                    <a href="{{ url_for('logout') }}" class="btn btn-small btn-secondary">Logout</a>
+                <div>
+                    <p class="text-xs text-slate-400">Channel Manager</p>
+                    <p class="text-lg font-semibold text-slate-50">Control Panel</p>
                 </div>
             </div>
-        </nav>
+            <nav class="space-y-1 text-sm font-medium text-slate-300">
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 bg-white/5 text-indigo-100" data-section="dashboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-200" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"/>
+                    </svg>
+                    Dashboard
+                </button>
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-indigo-100" data-section="servers">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="3" y="5" width="18" height="6" rx="2" ry="2" />
+                        <rect x="3" y="13" width="18" height="6" rx="2" ry="2" />
+                    </svg>
+                    Servers
+                </button>
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-indigo-100" data-section="templates">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 0 0-2 2v4m0 8v4a2 2 0 0 0 2 2h4m8-18h4a2 2 0 0 1 2 2v4m0 8v4a2 2 0 0 1-2 2h-4" />
+                    </svg>
+                    Templates
+                </button>
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-indigo-100" data-section="roles">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 12a5 5 0 1 0 0-10a5 5 0 0 0 0 10zm-6 9a6 6 0 0 1 12 0m-12-2a4 4 0 0 1 8 0" />
+                    </svg>
+                    Roles
+                </button>
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-indigo-100" data-section="logs">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h12M4 17h8" />
+                    </svg>
+                    Logs
+                </button>
+                <button class="sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-indigo-100" data-section="settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="3" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 8.6 15a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 10.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 15 12.6z" />
+                    </svg>
+                    Settings
+                </button>
+            </nav>
+            <div class="mt-6 space-y-4 rounded-2xl border border-white/5 bg-white/5 p-4">
+                <p class="text-xs uppercase tracking-wide text-slate-500">Bot Settings</p>
+                <div class="space-y-3 text-sm text-slate-200">
+                    {% for label in ['Bot Settings','Button Roles','Verification','Custom Commands','Timed Messages','Command Moderation','Auto Moderation','Audit Logging'] %}
+                    <label class="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/30 px-3 py-2">
+                        <span>{{ label }}</span>
+                        <input type="checkbox" class="h-5 w-10 rounded-full border border-white/10 bg-slate-900 accent-indigo-500" checked>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <a href="https://discord.gg/dKxzQBhC5M" target="_blank" rel="noreferrer" class="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/5 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-300 transition hover:border-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-100">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2.5l5.5 9.5h-11zM4 12h16v8H4z"/>
+                </svg>
+                Support Server
+            </a>
+            <div class="mt-auto rounded-2xl border border-white/5 bg-white/5 p-3 text-xs text-slate-400">
+                <p class="font-semibold text-slate-200">Session</p>
+                <p class="truncate text-slate-300">{{ user.username }}</p>
+                <a href="{{ url_for('logout') }}" class="mt-2 inline-flex items-center gap-2 text-indigo-300 hover:text-indigo-200">Logout</a>
+            </div>
+        </aside>
 
-        <div class="dashboard-content">
-            <div class="container">
-                <h1 class="page-title">Your Servers</h1>
-                <p class="page-subtitle">Select a server to manage</p>
-
-                <div class="guilds-grid">
-                    {% for guild in guilds %}
-                    <a href="{{ url_for('guild_dashboard', guild_id=guild.id) }}" class="guild-card">
-                        {% if guild.icon %}
-                        <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="guild-icon">
-                        {% else %}
-                        <div class="guild-icon-placeholder">{{ guild.name[0] }}</div>
-                        {% endif %}
-                        <div class="guild-info">
-                            <h3 class="guild-name">{{ guild.name }}</h3>
-                            <p class="guild-id">ID: {{ guild.id }}</p>
+        <main class="flex-1">
+            <header class="flex flex-col gap-4 border-b border-white/5 bg-white/5 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+                <div class="flex items-center gap-3">
+                    {% set logo_webp = url_for('static', filename='assets/logo.webp') %}
+                    {% set logo_png = url_for('static', filename='assets/logo.png') %}
+                    {% set logo_svg = url_for('static', filename='assets/logo.svg') %}
+                    <div class="relative h-12 w-12 overflow-hidden rounded-2xl bg-indigo-500/20">
+                        <img src="{{ logo_webp }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                        <img src="{{ logo_png }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                        <img src="{{ logo_svg }}" onerror="this.remove();" class="h-full w-full object-cover" alt="Logo">
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-400">Channel-Manager</p>
+                        <h1 class="text-3xl font-bold text-slate-50">Dashboard</h1>
+                        <p class="text-sm text-slate-400">Manage your servers</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300">
+                        <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
+                        Bot Online
+                    </span>
+                    <div class="flex items-center gap-3 rounded-full border border-white/5 bg-white/5 px-3 py-2">
+                        <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="h-10 w-10 rounded-full border border-white/10">
+                        <div>
+                            <p class="text-xs text-slate-400">Signed in</p>
+                            <p class="font-semibold text-slate-50">{{ user.username }}</p>
                         </div>
-                        <svg class="guild-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 18l6-6-6-6"/>
-                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                </div>
+            </header>
+
+            <section class="space-y-8 px-4 py-8 sm:px-6">
+                <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {% for guild in guilds %}
+                    <a href="{{ url_for('guild_dashboard', guild_id=guild.id) }}" class="group relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-5 shadow-xl shadow-black/40 transition hover:-translate-y-1 hover:border-indigo-400/60 hover:shadow-indigo-600/30">
+                        <div class="flex items-center gap-4">
+                            {% if guild.icon %}
+                            <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" alt="{{ guild.name }}" class="h-12 w-12 rounded-xl border border-white/10 object-cover">
+                            {% else %}
+                            <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-lg font-semibold text-slate-200">{{ guild.name[0] }}</div>
+                            {% endif %}
+                            <div class="min-w-0">
+                                <h3 class="truncate text-lg font-semibold text-slate-50">{{ guild.name }}</h3>
+                                <p class="truncate text-xs text-slate-400">ID: {{ guild.id }}</p>
+                            </div>
+                        </div>
+                        <div class="mt-6 flex items-center justify-between text-sm text-slate-400">
+                            <span class="flex items-center gap-2">Manage server</span>
+                            <span class="text-indigo-300 transition group-hover:translate-x-1">&rarr;</span>
+                        </div>
+                        <div class="absolute inset-0 -z-10 bg-gradient-to-br from-indigo-500/10 via-transparent to-cyan-500/10 opacity-0 transition group-hover:opacity-100"></div>
                     </a>
                     {% endfor %}
                 </div>
 
                 {% if not guilds %}
-                <div class="empty-state">
-                    <div class="empty-icon">🤖</div>
-                    <h3>No Servers Found</h3>
-                    <p>Make sure the bot is added to your server and you have manage server permissions.</p>
-                    <a href="https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=8&scope=bot%20applications.commands" class="btn btn-primary" target="_blank">Invite Bot</a>
+                <div class="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/5 px-8 py-10 text-center">
+                    <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-lg font-bold text-indigo-200">�Y�-</div>
+                    <h3 class="text-xl font-semibold text-slate-50">No Servers Found</h3>
+                    <p class="mt-2 max-w-xl text-sm text-slate-400">Make sure the bot is added to your server and you have manage server permissions.</p>
+                    <a href="https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=8&scope=bot%20applications.commands" target="_blank" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-slate-50 shadow-lg shadow-indigo-500/30 transition hover:-translate-y-0.5 hover:bg-indigo-400">Invite Bot</a>
                 </div>
                 {% endif %}
-            </div>
-        </div>
+
+                <div class="space-y-4 rounded-2xl border border-white/5 bg-white/5 p-6 shadow-inner shadow-black/30">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-slate-400">Recent Activity</p>
+                            <h3 class="text-xl font-semibold text-slate-50">Logs</h3>
+                        </div>
+                        <span class="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-300">Live</span>
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <div class="rounded-xl border border-white/5 bg-white/10 p-4 text-sm text-slate-400">Placeholder for latest events</div>
+                        <div class="rounded-xl border border-white/5 bg-white/10 p-4 text-sm text-slate-400">Moderation and setup logs</div>
+                        <div class="rounded-xl border border-white/5 bg-white/10 p-4 text-sm text-slate-400">Audit trail coming from backend</div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
+    <script>
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.sidebar-item').forEach(button => {
+                    button.classList.remove('bg-white/5', 'text-indigo-100');
+                    button.classList.add('text-slate-300');
+                });
+                item.classList.add('bg-white/5', 'text-indigo-100');
+                item.classList.remove('text-slate-300');
+            });
+        });
+    </script>
 </body>
 </html>

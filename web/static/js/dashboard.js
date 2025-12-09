@@ -13,8 +13,13 @@ function switchSection(sectionName) {
     // Update section visibility
     document.querySelectorAll('.dashboard-section').forEach(section => {
         section.classList.remove('active');
+        section.classList.add('hidden');
     });
-    document.getElementById(`${sectionName}-section`).classList.add('active');
+    const target = document.getElementById(`${sectionName}-section`);
+    if (target) {
+        target.classList.remove('hidden');
+        target.classList.add('active');
+    }
 }
 
 // Add event listeners to sidebar items
@@ -662,35 +667,35 @@ document.getElementById('role-color-hex')?.addEventListener('input', (e) => {
 // Role templates
 const roleTemplates = {
     gaming: [
-        { name: '🎮 Gaming', color: '#00ff88' },
-        { name: '🎯 Streamer', color: '#9146ff' },
-        { name: '🎥 Content Creator', color: '#ff006e' },
-        { name: '🏆 Pro Player', color: '#ffd700' },
-        { name: '🎪 Casual Gamer', color: '#3a86ff' }
+        { name: "Gaming", color: "#00ff88" },
+        { name: "Streamer", color: "#9146ff" },
+        { name: "Content Creator", color: "#ff006e" },
+        { name: "Pro Player", color: "#ffd700" },
+        { name: "Casual Gamer", color: "#3a86ff" }
     ],
     staff: [
-        { name: '👑 Owner', color: '#ff0000' },
-        { name: '⚡ Admin', color: '#ff4500' },
-        { name: '🛡️ Moderator', color: '#4169e1' },
-        { name: '🎓 Helper', color: '#32cd32' },
-        { name: '🤖 Bot', color: '#7289da' }
+        { name: "Owner", color: "#ff0000" },
+        { name: "Admin", color: "#ff4500" },
+        { name: "Moderator", color: "#4169e1" },
+        { name: "Helper", color: "#32cd32" },
+        { name: "Bot", color: "#7289da" }
     ],
     community: [
-        { name: '⭐ VIP', color: '#ffd700' },
-        { name: '💎 Premium', color: '#00ffff' },
-        { name: '🌟 Member', color: '#99aab5' },
-        { name: '👋 Newcomer', color: '#95a5a6' },
-        { name: '✅ Verified', color: '#43b581' }
+        { name: "VIP", color: "#ffd700" },
+        { name: "Premium", color: "#00ffff" },
+        { name: "Member", color: "#99aab5" },
+        { name: "Newcomer", color: "#95a5a6" },
+        { name: "Verified", color: "#43b581" }
     ],
     colors: [
-        { name: '🔴 Red', color: '#e74c3c' },
-        { name: '🟠 Orange', color: '#e67e22' },
-        { name: '🟡 Yellow', color: '#f1c40f' },
-        { name: '🟢 Green', color: '#2ecc71' },
-        { name: '🔵 Blue', color: '#3498db' },
-        { name: '🟣 Purple', color: '#9b59b6' },
-        { name: '🟤 Brown', color: '#a0826d' },
-        { name: '⚫ Black', color: '#2c3e50' }
+        { name: "Red", color: "#e74c3c" },
+        { name: "Orange", color: "#e67e22" },
+        { name: "Yellow", color: "#f1c40f" },
+        { name: "Green", color: "#2ecc71" },
+        { name: "Blue", color: "#3498db" },
+        { name: "Purple", color: "#9b59b6" },
+        { name: "Brown", color: "#a0826d" },
+        { name: "Black", color: "#2c3e50" }
     ]
 };
 
@@ -803,110 +808,6 @@ if (document.getElementById('roles-section')) {
     loadServerRoles();
 }
 
-// AI Assistant
-let aiPlan = null;
-
-function addAiMessage(text, from = 'bot') {
-    const log = document.getElementById('ai-chat-log');
-    if (!log) return;
-    const div = document.createElement('div');
-    div.className = `ai-message ai-${from}`;
-    div.textContent = text;
-    log.appendChild(div);
-    log.scrollTop = log.scrollHeight;
-}
-
-function renderAiPlan(plan) {
-    aiPlan = plan;
-    const rolesEl = document.getElementById('ai-plan-roles');
-    const catEl = document.getElementById('ai-plan-categories');
-    const applyBtn = document.getElementById('ai-apply-plan');
-    if (!rolesEl || !catEl || !applyBtn) return;
-    
-    if (!plan) {
-        rolesEl.textContent = 'No roles yet';
-        catEl.textContent = 'No plan yet';
-        applyBtn.disabled = true;
-        return;
-    }
-    
-    const roles = plan.roles || [];
-    rolesEl.innerHTML = roles.map(r => `<span class="ai-pill">${escapeHtml(r.name || '')}</span>`).join('') || 'No roles';
-    
-    const categories = plan.categories || [];
-    catEl.innerHTML = categories.map(cat => {
-        const channels = (cat.channels || []).map(ch => `<div class="ai-pill">${escapeHtml(ch.name || '')}</div>`).join('');
-        return `<div class="ai-plan-card"><strong>${escapeHtml(cat.name || 'Category')}</strong><div class="ai-pill-list" style="margin-top:8px;">${channels}</div></div>`;
-    }).join('') || 'No categories yet';
-    
-    applyBtn.disabled = false;
-}
-
-function clearAiChat() {
-    const log = document.getElementById('ai-chat-log');
-    if (log) {
-        log.innerHTML = '<div class="ai-message ai-bot">Hi! Tell me what you need and I\'ll craft the channels, categories, and roles.</div>';
-    }
-    renderAiPlan(null);
-}
-
-document.getElementById('ai-chat-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const prompt = document.getElementById('ai-prompt').value.trim();
-    const status = document.getElementById('ai-status');
-    if (!prompt) {
-        showNotification('Enter what you want the AI to build.', 'error');
-        return;
-    }
-    addAiMessage(prompt, 'user');
-    status.textContent = 'Generating with Gemini...';
-    
-    try {
-        const res = await fetch(`/api/guild/${guildId}/ai-chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt })
-        });
-        const data = await res.json();
-        if (res.ok && data.plan) {
-            addAiMessage('Here is a proposed structure. Review below!', 'bot');
-            renderAiPlan(data.plan);
-        } else {
-            addAiMessage(data.error || 'Failed to generate plan', 'bot');
-        }
-    } catch (error) {
-        addAiMessage('Error contacting AI service.', 'bot');
-    } finally {
-        status.textContent = '';
-    }
-});
-
-document.getElementById('ai-apply-plan')?.addEventListener('click', async () => {
-    if (!aiPlan) {
-        showNotification('Generate a plan first.', 'error');
-        return;
-    }
-    addAiMessage('Applying plan to the server...', 'bot');
-    try {
-        const res = await fetch(`/api/guild/${guildId}/ai-apply`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan: aiPlan })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            showNotification('Plan queued! Bot will create channels and roles.', 'success');
-            addAiMessage('Queued! I will start building your server now.', 'bot');
-        } else {
-            showNotification(data.error || 'Failed to apply plan', 'error');
-            addAiMessage(data.error || 'Failed to apply plan', 'bot');
-        }
-    } catch (error) {
-        showNotification('Failed to apply plan', 'error');
-        addAiMessage('Something went wrong applying the plan.', 'bot');
-    }
-});
-
 // Add CSS for notifications
 const style = document.createElement('style');
 style.textContent = `
@@ -980,3 +881,4 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
