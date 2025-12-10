@@ -1,14 +1,16 @@
 """
 Web dashboard backend using Flask with Discord OAuth2.
 """
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import requests
 import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+import time
 from functools import wraps
+import json
 import secrets
 import urllib.parse
 
@@ -23,6 +25,15 @@ except ImportError:
     if str(root_dir) not in sys.path:
         sys.path.insert(0, str(root_dir))
     from src.database import db
+
+try:
+    from src.modules.text_parser import parse_text_structure
+except Exception:
+    # fallback if import path differs when run as module
+    try:
+        from modules.text_parser import parse_text_structure
+    except Exception:
+        parse_text_structure = None
 
 
 app = Flask(__name__, 
@@ -76,6 +87,44 @@ def get_discord_user(access_token):
     return None
 
 
+def _refresh_access_token_if_needed(session_id: str) -> bool:
+    """Attempt to refresh an expired access token for dashboard sessions.
+    Returns True if refresh succeeded and session updated, False otherwise.
+    """
+    sess = db.get_session(session_id)
+    if not sess:
+        return False
+    refresh_token = sess.get('refresh_token')
+    if not refresh_token:
+        return False
+    # Exchange token
+    data = {
+        'client_id': DISCORD_CLIENT_ID,
+        'client_secret': DISCORD_CLIENT_SECRET,
+        'grant_type': 'refresh_token',
+        'refresh_token': refresh_token,
+        'redirect_uri': DISCORD_REDIRECT_URI,
+        'scope': 'identify guilds'
+    }
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    response = requests.post(f"{DISCORD_API_BASE}/oauth2/token", data=data, headers=headers)
+    if response.status_code != 200:
+        return False
+    token_data = response.json()
+    new_access_token = token_data.get('access_token')
+    new_refresh_token = token_data.get('refresh_token')
+    expires_in = token_data.get('expires_in', 604800)
+    new_expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+    try:
+        db.update_session(session_id, new_access_token, new_refresh_token, new_expires_at)
+        # Also update the Flask session so subsequent requests use the new token
+        session['access_token'] = new_access_token
+        session['session_id'] = session_id
+        return True
+    except Exception:
+        return False
+
+
 def get_user_guilds(access_token):
     """Get user's Discord guilds"""
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -85,13 +134,76 @@ def get_user_guilds(access_token):
     return []
 
 
+def get_user_guilds_with_refresh(session_id: str):
+    """Fetch the user's guilds using the session ID and refresh tokens if needed."""
+    access_token = session.get('access_token')
+    guilds = get_user_guilds(access_token)
+    if guilds:
+        return guilds
+    # Try refresh if session exists
+    if session_id and _refresh_access_token_if_needed(session_id):
+        access_token = session.get('access_token')
+        return get_user_guilds(access_token)
+    return []
+
+
+def _has_guild_access(guild_id: int) -> bool:
+    """Helper to test if current session user has Manage Server or Administrator access for a guild."""
+    sess_id = session.get('session_id')
+    guilds = get_user_guilds_with_refresh(sess_id)
+    for g in guilds:
+        try:
+            if int(g.get('id')) == guild_id:
+                permissions = int(g.get('permissions', 0))
+                if permissions & 0x20 or permissions & 0x8:
+                    return True
+        except Exception:
+            continue
+    return False
+
+
 def get_bot_guilds(bot_token):
-    """Get bot's guilds"""
+    """Get bot's guilds (fall back to DISCORD_TOKEN if DISCORD_BOT_TOKEN is not set).
+
+    Returns a list of guild objects or [] on error.
+    """
+    if not bot_token:
+        bot_token = os.getenv('DISCORD_TOKEN')
+        if bot_token:
+            print('[INFO] Using DISCORD_TOKEN as bot token fallback for get_bot_guilds')
+    if not bot_token:
+        print('[WARN] No bot token provided for get_bot_guilds')
+        return []
     headers = {"Authorization": f"Bot {bot_token}"}
     response = requests.get(f"{DISCORD_API_BASE}/users/@me/guilds", headers=headers)
     if response.status_code == 200:
         return response.json()
+    # Log helpful debugging info
+    if response.status_code == 401:
+        print('[WARN] Unauthorized bot token for get_bot_guilds (401). Check DISCORD_BOT_TOKEN / DISCORD_TOKEN values and ensure it is a Bot token.')
+    else:
+        print(f'[WARN] get_bot_guilds returned HTTP {response.status_code}: {response.text[:200]}')
     return []
+
+
+def get_bot_guilds_with_reason(bot_token):
+    """Return bot guilds and an optional reason string for failure."""
+    if not bot_token:
+        bot_token = os.getenv('DISCORD_TOKEN')
+    if not bot_token:
+        return [], 'missing-token'
+    headers = {"Authorization": f"Bot {bot_token}"}
+    response = requests.get(f"{DISCORD_API_BASE}/users/@me/guilds", headers=headers)
+    if response.status_code == 200:
+        return response.json(), None
+    if response.status_code == 401:
+        return [], 'unauthorized-token'
+    return [], f'http-{response.status_code}'
+
+
+def get_bot_token():
+    """Return the bot token used by the dashboard (DISCORD_BOT_TOKEN or fallback to DISCORD_TOKEN)."""
+    return os.getenv('DISCORD_BOT_TOKEN') or os.getenv('DISCORD_TOKEN')
 
 
 @app.route('/')
@@ -172,8 +284,8 @@ def dashboard():
     access_token = session.get('access_token')
     user = session.get('user')
     
-    # Get user's guilds
-    guilds = get_user_guilds(access_token)
+    # Get user's guilds with refresh support
+    guilds = get_user_guilds_with_refresh(session.get('session_id'))
     
     # Filter guilds where user has manage server permission
     admin_guilds = []
@@ -194,7 +306,7 @@ def guild_dashboard(guild_id):
     user = session.get('user')
     
     # Verify user has access to this guild
-    guilds = get_user_guilds(access_token)
+    guilds = get_user_guilds_with_refresh(session.get('session_id'))
     guild = None
     for g in guilds:
         if int(g['id']) == guild_id:
@@ -212,6 +324,22 @@ def guild_dashboard(guild_id):
     
     # Add bot client ID for invite link
     config['bot_client_id'] = DISCORD_CLIENT_ID
+    # Check if bot is present in this guild
+    bot_token = os.getenv('DISCORD_BOT_TOKEN')
+    bot_present = False
+    bot_present_reason = None
+    if bot_token or os.getenv('DISCORD_TOKEN'):
+        try:
+            bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+            bot_present_reason = reason
+            bot_present = any(int(g.get('id')) == guild_id for g in (bot_guilds or []))
+        except Exception:
+            bot_present_reason = 'error'
+            bot_present = False
+    else:
+        bot_present_reason = 'missing-token'
+    config['bot_present'] = bot_present
+    config['bot_present_reason'] = bot_present_reason
     
     return render_template('guild_dashboard_enhanced.html', 
                          user=user, 
@@ -232,19 +360,8 @@ def api_guild_config(guild_id):
         data = request.json
         
         # Validate user has access
-        access_token = session.get('access_token')
-        guilds = get_user_guilds(access_token)
-        has_access = False
-        
-        for g in guilds:
-            if int(g['id']) == guild_id:
-                permissions = int(g.get('permissions', 0))
-                if permissions & 0x20 or permissions & 0x8:
-                    has_access = True
-                    break
-        
-        if not has_access:
-            return jsonify({"error": "Unauthorized"}), 403
+        if not _has_guild_access(guild_id):
+            return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
         
         # Update config
         db.set_guild_config(guild_id, **data)
@@ -257,19 +374,8 @@ def api_guild_config(guild_id):
 def api_custom_commands(guild_id):
     """API endpoint for custom commands"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     if request.method == 'GET':
         commands = db.get_custom_commands(guild_id)
@@ -302,8 +408,8 @@ def api_custom_commands(guild_id):
 @login_required
 def api_user_guilds():
     """API endpoint to get user's guilds"""
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
+    # Use refresh-capable wrapper
+    guilds = get_user_guilds_with_refresh(session.get('session_id'))
     
     # Filter guilds where user has manage server permission
     admin_guilds = []
@@ -320,19 +426,8 @@ def api_user_guilds():
 def api_send_embed(guild_id):
     """API endpoint to send embeds via bot"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     channel_id = data.get('channel_id')
@@ -352,19 +447,8 @@ def api_send_embed(guild_id):
 def api_send_announcement(guild_id):
     """API endpoint to send announcements"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     channel_id = data.get('channel_id')
@@ -384,19 +468,8 @@ def api_send_announcement(guild_id):
 def api_create_role(guild_id):
     """API endpoint to create roles"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     role_name = data.get('name')
@@ -413,19 +486,8 @@ def api_create_role(guild_id):
 def api_create_bulk_roles(guild_id):
     """API endpoint to create multiple roles"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     role_names = data.get('role_names', [])
@@ -442,19 +504,9 @@ def api_create_bulk_roles(guild_id):
 def api_apply_template(guild_id):
     """API endpoint to apply server templates"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    # Validate user has access
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     template_name = data.get('template')
@@ -467,8 +519,158 @@ def api_apply_template(guild_id):
     if template_name not in valid_templates:
         return jsonify({"error": "Invalid template"}), 400
     
+    # Make sure bot is in this server and has required permissions
+    bot_token = os.getenv('DISCORD_BOT_TOKEN')
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    if reason == 'missing-token':
+        return jsonify({"error": "Server not configured: dashboard missing bot token. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN on server."}), 500
+    if reason == 'unauthorized-token':
+        return jsonify({"error": "Bot token invalid. Verify DISCORD_BOT_TOKEN is a valid Bot token."}), 500
+    if not bot_guilds or not any(int(g.get('id')) == guild_id for g in (bot_guilds or [])):
+        return jsonify({"error": "Bot not present in this server. Invite the bot with necessary permissions first."}), 400
+
     # Store template application request for bot to process
-    return jsonify({"success": True, "message": f"Template '{template_name}' applied successfully"})
+    try:
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
+            VALUES (?, 'template', ?, datetime('now'))
+            """,
+            (guild_id, template_name)
+        )
+        db.conn.commit()
+        request_id = cur.lastrowid
+        return jsonify({"success": True, "message": f"Template '{template_name}' queued. The bot will build it shortly.", "request_id": request_id})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue template: {str(e)}"}), 500
+
+
+@app.route('/api/guild/<int:guild_id>/template/preview', methods=['GET'])
+@login_required
+def api_template_preview(guild_id):
+    """Return a template JSON for preview without queuing it (built-in templates)."""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired."}), 403
+    name = request.args.get('name')
+    if not name:
+        return jsonify({"error": "Missing template name"}), 400
+    valid_templates = ['gaming', 'community', 'support', 'creative']
+    if name not in valid_templates:
+        return jsonify({"error": "Invalid template"}), 400
+    # Build the template using the bot helper (if bot code available)
+    try:
+        # Build the template mapping locally (avoid importing src.bot)
+        def _local_dashboard_template(name: str):
+            staff_roles = [
+                {"name": "👑 Admin", "color": 0xF04747, "permissions": 8, "hoist": True, "mentionable": False},
+                {"name": "🛡️ Moderator", "color": 0x5865F2, "permissions": 0, "hoist": True, "mentionable": True},
+                {"name": "✅ Verified", "color": 0x43B581, "permissions": 0, "hoist": False, "mentionable": True},
+            ]
+            templates = {
+                "gaming": {
+                    "roles": staff_roles + [{"name": "🎮 Gamer", "color": 0x00FF88, "permissions": 0}],
+                    "categories": [
+                        {"name": "📣 ANNOUNCEMENTS","channels":[{"name":"📢-news","type":"text","topic":"Server updates"},{"name":"🎉-events","type":"text","topic":"Giveaways and tournaments"}]},
+                        {"name": "💬 LOBBY","channels":[{"name":"👋-welcome","type":"text","topic":"Introduce yourself"},{"name":"💭-chat","type":"text","topic":"General chat"},{"name":"🔊 Squad 1","type":"voice"}]},
+                        {"name":"🎮 GAMES","channels":[{"name":"🥇-ranked","type":"text","topic":"Ranked coordination"},{"name":"🤝-lfg","type":"text","topic":"Find teammates"},{"name":"🎧 Game Chat","type":"voice"}]}
+                    ]
+                },
+                "community": {
+                    "roles": staff_roles + [{"name": "🎭 Member", "color": 0x99AAB5, "permissions": 0}],
+                    "categories": [
+                        {"name":"📣 INFO","channels":[{"name":"📢-announcements","type":"text"},{"name":"📜-rules","type":"text"}]},
+                        {"name":"💬 COMMUNITY","channels":[{"name":"general","type":"text","topic":"Chat with everyone"},{"name":"media-share","type":"text","topic":"Images and clips"},{"name":"Lounge","type":"voice"}]},
+                        {"name":"🎉 EVENTS","channels":[{"name":"giveaways","type":"text"},{"name":"polls","type":"text"}]}
+                    ]
+                },
+                "support": {
+                    "roles": staff_roles + [{"name": "🙋 Customer", "color": 0xFFB347, "permissions": 0}],
+                    "categories": [
+                        {"name":"ℹ️ START HERE","channels":[{"name":"welcome","type":"text"},{"name":"faq","type":"text","topic":"Common questions"}]},
+                        {"name":"🎟️ SUPPORT","channels":[{"name":"create-ticket","type":"text","topic":"Open support tickets"},{"name":"transcripts","type":"text","topic":"Closed ticket logs"},{"name":"Support VC","type":"voice"}]},
+                        {"name":"📚 KNOWLEDGE BASE","channels":[{"name":"guides","type":"text"},{"name":"updates","type":"text"}]}
+                    ]
+                },
+                "creative": {
+                    "roles": staff_roles + [{"name": "🎨 Creator", "color": 0xE67E22, "permissions": 0}],
+                    "categories": [
+                        {"name":"📣 NEWS","channels":[{"name":"announcements","type":"text"},{"name":"roadmap","type":"text"}]},
+                        {"name":"🖼️ SHOWCASE","channels":[{"name":"art-drop","type":"text","topic":"Share art"},{"name":"critiques","type":"text","topic":"Get feedback"},{"name":"Studio","type":"voice"}]},
+                        {"name":"💡 COLLAB","channels":[{"name":"ideas","type":"text"},{"name":"work-in-progress","type":"text"}]}
+                    ]
+                }
+            }
+            return templates.get(name) or templates["community"]
+        template = _local_dashboard_template(name)
+        return jsonify({"success": True, "template": template})
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate preview: {e}"}), 500
+
+
+@app.route('/api/guild/<int:guild_id>/apply-structure', methods=['POST'])
+@login_required
+def api_apply_structure(guild_id):
+    """Parse a text structure into a template and queue it for the bot"""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired."}), 403
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    if reason == 'missing-token':
+        return jsonify({"error": "Server not configured: dashboard missing bot token. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN on server."}), 500
+    if reason == 'unauthorized-token':
+        return jsonify({"error": "Bot token invalid. Verify DISCORD_BOT_TOKEN is a valid Bot token."}), 500
+    if not bot_guilds or not any(int(g.get('id')) == guild_id for g in (bot_guilds or [])):
+        return jsonify({"error": "Bot not present in this server."}), 400
+
+    data = request.json or {}
+    raw = data.get('structure', '').strip()
+    if not raw:
+        return jsonify({"error": "No structure provided"}), 400
+
+    if not parse_text_structure:
+        return jsonify({"error": "Server parse module not available"}), 500
+    try:
+        template = parse_text_structure(raw)
+        cur = db.conn.cursor()
+        cur.execute("INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at) VALUES (?, 'template', ?, datetime('now'))", (guild_id, json.dumps(template)))
+        db.conn.commit()
+        request_id = cur.lastrowid
+        return jsonify({"success": True, "message": "Server structure queued for application", "request_id": request_id})
+    except Exception as e:
+        return jsonify({"error": f"Failed to parse or queue structure: {str(e)}"}), 500
+
+
+@app.route('/api/guild/<int:guild_id>/structure/preview', methods=['POST'])
+@login_required
+def api_structure_preview(guild_id):
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired."}), 403
+    data = request.json or {}
+    raw = data.get('structure', '').strip()
+    if not raw:
+        return jsonify({"error": "No structure provided"}), 400
+    if not parse_text_structure:
+        return jsonify({"error": "Server parse module not available"}), 500
+    try:
+        template = parse_text_structure(raw)
+        return jsonify({"success": True, "template": template})
+    except Exception as e:
+        return jsonify({"error": f"Failed to preview structure: {str(e)}"}), 500
+
+
+@app.route('/api/guild/<int:guild_id>/bot-presence', methods=['GET'])
+@login_required
+def api_bot_presence(guild_id):
+    """Return whether the dashboard can detect the bot in the guild and a reason if not."""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired."}), 403
+
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    present = any(int(g.get('id')) == guild_id for g in (bot_guilds or []))
+    return jsonify({"present": present, "reason": reason})
 
 
 @app.route('/api/guild/<int:guild_id>/leveling-setup', methods=['POST'])
@@ -476,19 +678,8 @@ def api_apply_template(guild_id):
 def api_leveling_setup(guild_id):
     """API endpoint to trigger automatic leveling setup"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     milestones = data.get('milestones', '5,10,20,30,50,80,100')
@@ -518,19 +709,8 @@ def api_leveling_setup(guild_id):
 def api_add_level_role(guild_id):
     """API endpoint to add level role rewards"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     level = data.get('level')
@@ -551,19 +731,8 @@ def api_add_level_role(guild_id):
 def api_create_giveaway(guild_id):
     """API endpoint to create giveaways"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     channel_id = data.get('channel_id')
@@ -585,23 +754,12 @@ def api_create_giveaway(guild_id):
 def api_manage_roles(guild_id):
     """API endpoint to manage server roles"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:  # MANAGE_GUILD or ADMINISTRATOR
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     if request.method == 'GET':
         # Fetch roles from Discord API
-        bot_token = os.getenv("DISCORD_BOT_TOKEN")
+        bot_token = get_bot_token()
         if bot_token:
             try:
                 headers = {"Authorization": f"Bot {bot_token}"}
@@ -691,24 +849,68 @@ def api_manage_roles(guild_id):
             return jsonify({"error": f"Failed to delete role: {str(e)}"}), 500
 
 
+@app.route('/api/guild/<int:guild_id>/pending', methods=['GET', 'DELETE'])
+@login_required
+def api_pending_requests(guild_id):
+    """API endpoint to view or cancel pending setup requests for a guild"""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
+
+    if request.method == 'GET':
+        try:
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT id, setup_type, data, created_at, processed FROM pending_setup_requests WHERE guild_id = ? ORDER BY created_at DESC", (guild_id,))
+            rows = cursor.fetchall()
+            results = [dict(row) for row in rows]
+            return jsonify({"requests": results})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    elif request.method == 'DELETE':
+        req_id = request.args.get('id')
+        if not req_id:
+            return jsonify({"error": "Missing id param"}), 400
+        try:
+            db.conn.execute("DELETE FROM pending_setup_requests WHERE id = ? AND guild_id = ?", (int(req_id), guild_id))
+            db.conn.commit()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/guild/<int:guild_id>/pending/stream')
+@login_required
+def api_pending_stream(guild_id):
+    """Server-Sent Events stream for pending requests for a guild"""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired."}), 403
+
+    def generate():
+        last_payload = None
+        while True:
+            try:
+                cursor = db.conn.cursor()
+                cursor.execute("SELECT id, setup_type, data, created_at, processed FROM pending_setup_requests WHERE guild_id = ? ORDER BY created_at DESC", (guild_id,))
+                rows = cursor.fetchall()
+                results = [dict(row) for row in rows]
+                payload = json.dumps(results, default=str)
+                if payload != last_payload:
+                    last_payload = payload
+                    yield f"data: {payload}\n\n"
+            except Exception:
+                pass
+            time.sleep(3)
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
 @app.route('/api/guild/<int:guild_id>/ticketing', methods=['POST'])
 @login_required
 def api_setup_ticketing(guild_id):
     """API endpoint to setup ticket system"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     data = request.json
     channel_id = data.get('channel_id')
@@ -738,19 +940,8 @@ def api_setup_ticketing(guild_id):
 def api_create_verified_role(guild_id):
     """API endpoint to create auto-verified role"""
     # Validate user has access
-    access_token = session.get('access_token')
-    guilds = get_user_guilds(access_token)
-    has_access = False
-    
-    for g in guilds:
-        if int(g['id']) == guild_id:
-            permissions = int(g.get('permissions', 0))
-            if permissions & 0x20 or permissions & 0x8:
-                has_access = True
-                break
-    
-    if not has_access:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
     
     # Store verified role creation request for bot to process
     try:

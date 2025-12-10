@@ -37,6 +37,11 @@ def main() -> None:
     # Load .env so both bot and dashboard get OAuth/env config
     load_dotenv(dotenv_path=ENV_PATH)
 
+    # If DISCORD_BOT_TOKEN is not set explicitly, fall back to DISCORD_TOKEN
+    if not os.getenv('DISCORD_BOT_TOKEN') and os.getenv('DISCORD_TOKEN'):
+        os.environ['DISCORD_BOT_TOKEN'] = os.getenv('DISCORD_TOKEN')
+        print('[INFO] DISCORD_BOT_TOKEN not set; falling back to DISCORD_TOKEN for dashboard API operations')
+
     processes: List[Tuple[str, subprocess.Popen]] = []
     python_exe = sys.executable
 
@@ -52,7 +57,8 @@ def main() -> None:
     processes.append(("Dashboard", dashboard_proc))
 
     dashboard_port = os.getenv("DASHBOARD_PORT", "6767")
-    print(f"[INFO] Dashboard available at http://jthweb.yugp.me:{dashboard_port}")
+    dashboard_url = os.getenv("DASHBOARD_URL", f"http://jthweb.yugp.me:{dashboard_port}")
+    print(f"[INFO] Dashboard available at {dashboard_url}")
     print("[INFO] Press Ctrl+C to stop both services.")
 
     try:

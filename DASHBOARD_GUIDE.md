@@ -3,7 +3,7 @@
 ## 🌐 Web Dashboard
 
 ### Overview
-Modern, Discord-themed web dashboard for complete bot management. Access at `https://jthweb.yugp.me:6767`
+Modern, Discord-themed web dashboard for complete bot management. Access at `https://jthweb.yugp.me`
 
 ### Features
 
@@ -289,7 +289,7 @@ Modern, Discord-themed web dashboard for complete bot management. Access at `htt
 1. Set environment variables for production domain
 2. Configure SSL/TLS certificates
 3. Update OAuth redirect URIs in Discord Developer Portal
-4. Set `DASHBOARD_URL=https://jthweb.yugp.me:6767`
+4. Set `DASHBOARD_URL=https://jthweb.yugp.me`
 5. Run with `python app.py`
 
 ### Port Configuration
@@ -299,8 +299,8 @@ Change via `DASHBOARD_PORT` environment variable
 ### Domain Setup
 Update these in `.env`:
 ```env
-DISCORD_REDIRECT_URI=https://jthweb.yugp.me:6767/callback
-DASHBOARD_URL=https://jthweb.yugp.me:6767
+DISCORD_REDIRECT_URI=https://jthweb.yugp.me/callback
+DASHBOARD_URL=https://jthweb.yugp.me
 ```
 
 ---

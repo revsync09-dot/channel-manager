@@ -1,7 +1,9 @@
 ﻿import asyncio
 import os
+from urllib.parse import urlparse, urlunparse
 import sys
 import sqlite3
+import json
 from typing import Any
 
 import discord
@@ -98,6 +100,40 @@ intents.guilds = True
 intents.members = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Attach the shared Database instance to the bot so modules may use bot.db
+bot.db = db
+
+async def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
+    """Return True if the invoking user is the guild owner, server administrator, or app owner/owner team member."""
+    if not interaction.guild:
+        return False
+    owner_id = interaction.guild.owner_id
+    if not owner_id:
+        try:
+            owner = await interaction.guild.fetch_owner()
+            owner_id = owner.id
+        except Exception:
+            owner_id = None
+    if owner_id == interaction.user.id:
+        return True
+    member = interaction.user if isinstance(interaction.user, discord.Member) else await interaction.guild.fetch_member(interaction.user.id)
+    if member and member.guild_permissions.administrator:
+        return True
+    app_info = getattr(bot, '_app_info', None)
+    if app_info and hasattr(app_info, 'owner'):
+        if app_info.owner and app_info.owner.id == interaction.user.id:
+            return True
+        if hasattr(app_info, 'team') and app_info.team:
+            return any(m.id == interaction.user.id for m in app_info.team.members)
+    return False
+
+
+
+
+
+
+
 
 
 async def process_pending_setups():
@@ -252,6 +288,26 @@ async def process_pending_setups():
                         print(f"❌ Error setting up tickets for guild {guild_id}: {e}")
                         cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
                         conn.commit()
+
+                elif setup_type == 'template':
+                    try:
+                        # data may be a built-in name or a JSON string representing the template
+                        template = None
+                        raw = data.strip() if data else ''
+                        if raw.startswith('{') or raw.startswith('['):
+                            template = json.loads(raw)
+                        else:
+                            template = _get_dashboard_template(raw)
+                        _ensure_template_safe(template)
+                        await build_server_from_template(guild, template)
+
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+                        print(f"✅ Applied template (queued) for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error applying template for guild {guild_id}: {e}")
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
             
             conn.close()
         except Exception as e:
@@ -269,6 +325,10 @@ async def on_ready():
         pass
     print(f"Bot logged in as {bot.user}")
     
+    # Ensure DB is attached to bot for modules
+    if not hasattr(bot, 'db') or getattr(bot, 'db', None) is None:
+        bot.db = db
+
     # Store app info for owner checks
     bot._app_info = await bot.application_info()
     
@@ -551,7 +611,16 @@ async def setup_command(interaction: discord.Interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
     
-    dashboard_url = os.getenv("DASHBOARD_URL", "https://jthweb.yugp.me:6767")
+    raw_dashboard_url = os.getenv("DASHBOARD_URL", "https://jthweb.yugp.me")
+    # Normalize URL to remove explicit port if present so the dashboard button doesn't show :6767
+    try:
+        parsed = urlparse(raw_dashboard_url)
+        if parsed.scheme and parsed.hostname:
+            dashboard_url = urlunparse((parsed.scheme, parsed.hostname, parsed.path or "", parsed.params, parsed.query, parsed.fragment))
+        else:
+            dashboard_url = raw_dashboard_url
+    except Exception:
+        dashboard_url = raw_dashboard_url
     
     embed = discord.Embed(
         title="🚀 Server Setup",
@@ -1015,28 +1084,128 @@ def _ensure_template_safe(template: Any) -> None:
         raise ValueError(f"Too many roles ({role_count}).")
 
 
-async def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
-    if not interaction.guild:
-        return False
-    owner_id = interaction.guild.owner_id
-    if not owner_id:
-        try:
-            owner = await interaction.guild.fetch_owner()
-            owner_id = owner.id
-        except Exception:
-            owner_id = None
-    if owner_id == interaction.user.id:
-        return True
-    member = interaction.user if isinstance(interaction.user, discord.Member) else await interaction.guild.fetch_member(interaction.user.id)
-    if member and member.guild_permissions.administrator:
-        return True
-    app_info = getattr(bot, '_app_info', None)
-    if app_info and hasattr(app_info, 'owner'):
-        if app_info.owner and app_info.owner.id == interaction.user.id:
-            return True
-        if hasattr(app_info, 'team') and app_info.team:
-            return any(m.id == interaction.user.id for m in app_info.team.members)
-    return False
+def _get_dashboard_template(name: str) -> dict:
+    name = (name or "").lower()
+    staff_roles = [
+        {"name": "👑 Admin", "color": 0xF04747, "permissions": 8, "hoist": True, "mentionable": False},
+        {"name": "🛡️ Moderator", "color": 0x5865F2, "permissions": 0, "hoist": True, "mentionable": True},
+        {"name": "✅ Verified", "color": 0x43B581, "permissions": 0, "hoist": False, "mentionable": True},
+    ]
+    templates = {
+        "gaming": {
+            "roles": staff_roles + [{"name": "🎮 Gamer", "color": 0x00FF88, "permissions": 0}],
+            "categories": [
+                {
+                    "name": "📣 ANNOUNCEMENTS",
+                    "channels": [
+                        {"name": "📢-news", "type": "text", "topic": "Server updates"},
+                        {"name": "🎉-events", "type": "text", "topic": "Giveaways and tournaments"},
+                    ],
+                },
+                {
+                    "name": "💬 LOBBY",
+                    "channels": [
+                        {"name": "👋-welcome", "type": "text", "topic": "Introduce yourself"},
+                        {"name": "💭-chat", "type": "text", "topic": "General chat"},
+                        {"name": "🔊 Squad 1", "type": "voice"},
+                    ],
+                },
+                {
+                    "name": "🎮 GAMES",
+                    "channels": [
+                        {"name": "🥇-ranked", "type": "text", "topic": "Ranked coordination"},
+                        {"name": "🤝-lfg", "type": "text", "topic": "Find teammates"},
+                        {"name": "🎧 Game Chat", "type": "voice"},
+                    ],
+                },
+            ],
+        },
+        "community": {
+            "roles": staff_roles + [{"name": "🎭 Member", "color": 0x99AAB5, "permissions": 0}],
+            "categories": [
+                {
+                    "name": "📣 INFO",
+                    "channels": [
+                        {"name": "📢-announcements", "type": "text"},
+                        {"name": "📜-rules", "type": "text"},
+                    ],
+                },
+                {
+                    "name": "💬 COMMUNITY",
+                    "channels": [
+                        {"name": "general", "type": "text", "topic": "Chat with everyone"},
+                        {"name": "media-share", "type": "text", "topic": "Images and clips"},
+                        {"name": "Lounge", "type": "voice"},
+                    ],
+                },
+                {
+                    "name": "🎉 EVENTS",
+                    "channels": [
+                        {"name": "giveaways", "type": "text"},
+                        {"name": "polls", "type": "text"},
+                    ],
+                },
+            ],
+        },
+        "support": {
+            "roles": staff_roles + [{"name": "🙋 Customer", "color": 0xFFB347, "permissions": 0}],
+            "categories": [
+                {
+                    "name": "ℹ️ START HERE",
+                    "channels": [
+                        {"name": "welcome", "type": "text"},
+                        {"name": "faq", "type": "text", "topic": "Common questions"},
+                    ],
+                },
+                {
+                    "name": "🎟️ SUPPORT",
+                    "channels": [
+                        {"name": "create-ticket", "type": "text", "topic": "Open support tickets"},
+                        {"name": "transcripts", "type": "text", "topic": "Closed ticket logs"},
+                        {"name": "Support VC", "type": "voice"},
+                    ],
+                },
+                {
+                    "name": "📚 KNOWLEDGE BASE",
+                    "channels": [
+                        {"name": "guides", "type": "text"},
+                        {"name": "updates", "type": "text"},
+                    ],
+                },
+            ],
+        },
+        "creative": {
+            "roles": staff_roles + [{"name": "🎨 Creator", "color": 0xE67E22, "permissions": 0}],
+            "categories": [
+                {
+                    "name": "📣 NEWS",
+                    "channels": [
+                        {"name": "announcements", "type": "text"},
+                        {"name": "roadmap", "type": "text"},
+                    ],
+                },
+                {
+                    "name": "🖼️ SHOWCASE",
+                    "channels": [
+                        {"name": "art-drop", "type": "text", "topic": "Share art"},
+                        {"name": "critiques", "type": "text", "topic": "Get feedback"},
+                        {"name": "Studio", "type": "voice"},
+                    ],
+                },
+                {
+                    "name": "💡 COLLAB",
+                    "channels": [
+                        {"name": "ideas", "type": "text"},
+                        {"name": "work-in-progress", "type": "text"},
+                    ],
+                },
+            ],
+        },
+    }
+    return templates.get(name) or templates["community"]
+
+
+ 
 
 
 def _build_rules_embed(config: dict) -> discord.Embed:

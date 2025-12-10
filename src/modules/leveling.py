@@ -503,6 +503,14 @@ def setup_leveling_commands(bot, leveling: LevelingSystem):
 
 def init_leveling(bot):
     """Initialize leveling system"""
+    if not hasattr(bot, 'db') or getattr(bot, 'db', None) is None:
+        try:
+            from ..database import db as default_db
+            bot.db = default_db
+            print("[WARN] bot.db not found; attached fallback database from modules.leveling")
+        except Exception:
+            print("[ERROR] bot.db is required for leveling initialization but not found.")
+            return None
     leveling = LevelingSystem(bot.db)
     bot.leveling = leveling
     setup_leveling_commands(bot, leveling)

@@ -319,28 +319,326 @@ async function createBulkRoles() {
 }
 
 // Server Setup Templates
-async function applyTemplate(templateName) {
-    if (!confirm(`Apply the ${templateName} template? This will create channels, roles, and categories.`)) {
+// Apply structure (text-based channel structure) - top-level function
+async function applyCustomStructure() {
+    const raw = document.getElementById('channel-structure')?.value || '';
+    if (typeof botPresent !== 'undefined' && !botPresent) {
+        showNotification('Bot is not present in this server. Invite the bot first.', 'error');
         return;
     }
-    
+    if (!raw.trim()) {
+        showNotification('Please paste a channel structure first.', 'error');
+        return;
+    }
+    if (!confirm('Apply this channel structure? This will create channels/roles/categories automatically.')) return;
+    try {
+        const res = await fetch(`/api/guild/${guildId}/apply-structure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ structure: raw })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showNotification('Structure queued for application by the bot.', 'success');
+            if (data.request_id) {
+                waitForRequestCompletion(data.request_id).then(() => {
+                    showNotification('Structure applied successfully!', 'success');
+                    loadPendingRequests();
+                }).catch(() => {
+                    showNotification('Structure was queued but timed out waiting for completion.', 'warning');
+                    loadPendingRequests();
+                });
+                loadPendingRequests();
+            }
+            return data;
+        } else {
+            showNotification(data.error || 'Failed to queue structure', 'error');
+            return null;
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to apply structure', 'error');
+        return null;
+    }
+}
+
+// Create verified role - top-level
+async function createVerifiedRole() {
+    if (!confirm('Create a verified role for this server?')) return;
+    try {
+        const res = await fetch(`/api/guild/${guildId}/verified-role`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            showNotification(data.message || 'Verified role queued', 'success');
+            if (data.request_id) {
+                waitForRequestCompletion(data.request_id).then(() => {
+                    showNotification('Verified role created successfully!', 'success');
+                    loadPendingRequests();
+                }).catch(() => {
+                    showNotification('Verified role was queued but timed out waiting for completion.', 'warning');
+                    loadPendingRequests();
+                });
+                loadPendingRequests();
+            }
+            return data;
+        } else {
+            showNotification(data.error || 'Failed to queue verified role', 'error');
+            return null;
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to create verified role', 'error');
+        return null;
+    }
+}
+
+// Leveling setup - top-level
+async function applyLeveling() {
+    const milestones = document.getElementById('leveling-milestones')?.value || '5,10,20';
+    const createInfo = document.getElementById('leveling-create-info')?.checked || false;
+    const createRules = document.getElementById('leveling-create-rules')?.checked || false;
+    if (!confirm('Set up automatic leveling system for this server?')) return;
+    try {
+        const res = await fetch(`/api/guild/${guildId}/leveling-setup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ milestones, create_info_channel: createInfo, create_rules_channel: createRules })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showNotification(data.message || 'Leveling setup queued', 'success');
+            if (data.request_id) {
+                waitForRequestCompletion(data.request_id).then(() => {
+                    showNotification('Leveling setup applied successfully!', 'success');
+                    loadPendingRequests();
+                }).catch(() => {
+                    showNotification('Leveling was queued but timed out waiting for completion.', 'warning');
+                    loadPendingRequests();
+                });
+                loadPendingRequests();
+            }
+            return data;
+        } else {
+            showNotification(data.error || 'Failed to queue leveling setup', 'error');
+            return null;
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to setup leveling', 'error');
+        return null;
+    }
+}
+async function applyTemplate(templateName) {
+    if (!confirm(`Apply the ${templateName} template? This will create channels, roles, and categories.`)) {
+        return null;
+    }
+    if (typeof botPresent !== 'undefined' && !botPresent) {
+        showNotification('Bot is not present in this server. Invite the bot first.', 'error');
+        return null;
+    }
     try {
         const res = await fetch(`/api/guild/${guildId}/template`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ template: templateName })
         });
-        
+        const data = await res.json();
         if (res.ok) {
-            showNotification('Template applied successfully!', 'success');
+            showNotification('Template queued for application by the bot.', 'success');
+            if (data.request_id) {
+                // wait for bot to complete processing via SSE stream
+                waitForRequestCompletion(data.request_id).then(() => {
+                    showNotification('Template applied successfully!', 'success');
+                    loadPendingRequests();
+                }).catch(() => {
+                    showNotification('Template was queued but timed out waiting for completion.', 'warning');
+                    loadPendingRequests();
+                });
+                loadPendingRequests();
+            }
+            return data;
         } else {
-            const error = await res.json();
-            showNotification(error.error || 'Failed to apply template', 'error');
+            showNotification(data.error || 'Failed to apply template', 'error');
+            return null;
         }
     } catch (error) {
+        console.error(error);
         showNotification('Failed to apply template', 'error');
+        return null;
     }
 }
+
+async function previewTemplate(templateName) {
+    try {
+        const res = await fetch(`/api/guild/${guildId}/template/preview?name=${encodeURIComponent(templateName)}`);
+        if (!res.ok) {
+            const e = await res.json();
+            showNotification(e.error || 'Failed to fetch preview', 'error');
+            return;
+        }
+        const data = await res.json();
+        if (data.template) {
+            const modal = document.getElementById('preview-modal');
+            modal.dataset.kind = 'template';
+            modal.dataset.templateName = templateName;
+            modal.dataset.structureRaw = '';
+            showTemplatePreview(data.template);
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to load preview', 'error');
+    }
+}
+
+function showTemplatePreview(template) {
+    // Build modal contents and show
+    const modal = document.getElementById('preview-modal');
+    const title = modal.querySelector('.preview-title');
+    const body = modal.querySelector('.preview-body');
+    title.innerText = template.summary || 'Template Preview';
+    // roles and channels
+    const rolesHtml = (template.roles || []).map(r => `<li>${escapeHtml(r.name)}</li>`).join('');
+    const catsHtml = (template.categories || []).map(cat => `<li><strong>${escapeHtml(cat.name)}</strong> (${(cat.channels||[]).length} channels)</li>`).join('');
+    body.innerHTML = `<div class="grid grid-cols-2 gap-4"><div><h4 class="text-sm text-slate-400">Roles</h4><ul class="text-sm">${rolesHtml}</ul></div><div><h4 class="text-sm text-slate-400">Categories</h4><ul class="text-sm">${catsHtml}</ul></div></div>`;
+    modal.dataset.kind = 'template';
+    modal.dataset.templateName = template.name || '';
+    modal.dataset.structureRaw = '';
+    modal.classList.remove('hidden');
+}
+
+async function previewStructure() {
+    const raw = document.getElementById('channel-structure')?.value || '';
+    if (!raw.trim()) {
+        showNotification('Please paste a channel structure first.', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`/api/guild/${guildId}/structure/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ structure: raw })
+        });
+        if (!res.ok) {
+            const e = await res.json();
+            showNotification(e.error || 'Failed to fetch structure preview', 'error');
+            return;
+        }
+        const data = await res.json();
+        if (data.template) {
+            const modal = document.getElementById('preview-modal');
+            modal.dataset.kind = 'structure';
+            modal.dataset.templateName = '';
+            modal.dataset.structureRaw = raw;
+            showTemplatePreview(data.template);
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to load preview', 'error');
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('preview-modal');
+    if (e.target && e.target.matches('.preview-modal-close')) {
+        modal.classList.add('hidden');
+    }
+});
+
+async function queueFromPreview() {
+    const modal = document.getElementById('preview-modal');
+    if (!modal) return;
+    const kind = modal.dataset.kind;
+    if (kind === 'template') {
+        const name = modal.dataset.templateName;
+        if (name) {
+            await applyTemplate(name);
+            modal.classList.add('hidden');
+            loadPendingRequests();
+        }
+    } else if (kind === 'structure') {
+        const raw = modal.dataset.structureRaw;
+        if (raw) {
+            await applyCustomStructure();
+            modal.classList.add('hidden');
+            loadPendingRequests();
+        }
+    }
+}
+
+async function loadPendingRequests() {
+    try {
+        const res = await fetch(`/api/guild/${guildId}/pending`);
+        if (!res.ok) {
+            showNotification('Failed to load pending requests', 'error');
+            return;
+        }
+        const data = await res.json();
+        const listEl = document.getElementById('pending-requests-list');
+        if (!listEl) return;
+        if (!data.requests || data.requests.length === 0) {
+            listEl.innerHTML = '<p class="text-sm text-slate-400">No pending actions yet.</p>';
+            return;
+        }
+        listEl.innerHTML = '';
+        data.requests.forEach(req => {
+            const card = document.createElement('div');
+            card.className = 'flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3';
+            const left = document.createElement('div');
+            left.className = 'min-w-0';
+            left.innerHTML = `<p class="text-sm font-semibold text-slate-50">${escapeHtml(req.setup_type)}</p><p class="truncate text-xs text-slate-400">${escapeHtml(req.data)} • ${new Date(req.created_at).toLocaleString()}</p>`;
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-2';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-500';
+            cancelBtn.innerText = 'Cancel';
+            cancelBtn.onclick = async () => {
+                if (!confirm('Cancel this pending request?')) return;
+                const res2 = await fetch(`/api/guild/${guildId}/pending?id=${req.id}`, { method: 'DELETE' });
+                if (res2.ok) {
+                    showNotification('Request canceled', 'success');
+                    loadPendingRequests();
+                } else {
+                    showNotification('Failed to cancel', 'error');
+                }
+            };
+            right.appendChild(cancelBtn);
+            card.appendChild(left);
+            card.appendChild(right);
+            listEl.appendChild(card);
+        });
+    } catch (err) {
+        console.error(err);
+        showNotification('Failed to load pending requests', 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof loadPendingRequests === 'function') {
+        loadPendingRequests();
+    }
+    // Initialize SSE to receive real-time pending request updates
+    if (typeof initPendingSSE === 'function') initPendingSSE();
+    // If bot is missing, query debug endpoint for more info
+    (async () => {
+        if (typeof botPresent !== 'undefined' && !botPresent) {
+            try {
+                const res = await fetch(`/api/guild/${guildId}/bot-presence`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.reason) {
+                        let message = 'Bot not present';
+                        if (data.reason === 'missing-token') message = 'Dashboard not configured with bot token (DISCORD_BOT_TOKEN missing)';
+                        if (data.reason === 'unauthorized-token') message = 'Bot token invalid or unauthorized';
+                        if (data.reason && data.reason.startsWith('http-')) message = `Bot token check returned ${data.reason}`;
+                        showNotification(message, 'warning');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to query bot presence debug endpoint', err);
+            }
+        }
+    })();
+});
 
 function openCustomSetup() {
     showNotification('Custom setup coming soon!', 'info');
@@ -603,6 +901,58 @@ document.getElementById('giveaway-form')?.addEventListener('submit', async (e) =
     }
 });
 
+// SSE for live pending queue updates and waiting helpers
+let pendingSSE = null;
+const pendingListeners = {};
+
+function initPendingSSE() {
+    if (typeof guildId === 'undefined') return;
+    try {
+        const url = `/api/guild/${guildId}/pending/stream`;
+        if (typeof EventSource === 'undefined') return;
+        pendingSSE = new EventSource(url);
+        pendingSSE.onmessage = (e) => {
+            try {
+                const requests = JSON.parse(e.data || '[]');
+                // Update pending list UI
+                if (typeof loadPendingRequests === 'function') loadPendingRequests();
+                // Check listeners
+                requests.forEach(req => {
+                    if (req.processed && pendingListeners[req.id]) {
+                        pendingListeners[req.id].forEach(cb => cb(req));
+                        delete pendingListeners[req.id];
+                    }
+                });
+            } catch (err) {
+                console.error('SSE parse error', err);
+            }
+        };
+        pendingSSE.onerror = (err) => {
+            console.warn('SSE error', err);
+            if (pendingSSE && pendingSSE.readyState === EventSource.CLOSED) {
+                // Attempt reconnect after a few seconds
+                setTimeout(() => initPendingSSE(), 3000);
+            }
+        };
+    } catch (err) {
+        console.error('Failed to init pending SSE', err);
+    }
+}
+
+function waitForRequestCompletion(requestId, timeoutMs = 60000) {
+    return new Promise((resolve, reject) => {
+        if (!requestId) return reject(new Error('Missing requestId'));
+        if (!pendingListeners[requestId]) pendingListeners[requestId] = [];
+        pendingListeners[requestId].push((req) => resolve(req));
+        setTimeout(() => {
+            if (pendingListeners[requestId]) {
+                pendingListeners[requestId] = pendingListeners[requestId].filter(cb => cb !== resolve);
+                reject(new Error('timeout'));
+            }
+        }, timeoutMs);
+    });
+}
+
 // Utility Functions
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -732,34 +1082,6 @@ async function applyRoleTemplate(templateName) {
 }
 
 // Bulk role creator
-async function createBulkRoles() {
-    const textarea = document.getElementById('bulk-roles');
-    const roleNames = textarea.value.split('\\n').filter(n => n.trim());
-    
-    if (roleNames.length === 0) {
-        showNotification('Enter at least one role name', 'error');
-        return;
-    }
-    
-    if (!confirm(`Create ${roleNames.length} roles?`)) return;
-    
-    showNotification(`Creating ${roleNames.length} roles...`, 'info');
-    
-    for (const name of roleNames) {
-        try {
-            await fetch(`/api/guild/${guildId}/roles`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), color: '#99AAB5', permissions: [] })
-            });
-        } catch (error) {
-            console.error(`Error creating role ${name}:`, error);
-        }
-    }
-    
-    showNotification('Roles created successfully!', 'success');
-    setTimeout(() => location.reload(), 2000);
-}
 
 // Theme application
 async function applyTheme(themeName) {

@@ -131,11 +131,17 @@ copy .env.example .env
 **Important:** Update `.env` with:
 - Your Discord bot token
 - OAuth client ID and secret
-- Production domain (default: `https://jthweb.yugp.me:6767`)
+- Production domain (default: `https://jthweb.yugp.me`)
 
 4. **Run the bot**
 
-**Recommended: Start everything together**
+**Recommended: Start everything together (Windows)**
+```powershell
+# Ensure you edited your .env or copied .env.example
+./run.ps1
+```
+
+Or run with Python directly (cross-platform):
 ```bash
 python app.py
 ```
@@ -150,7 +156,7 @@ This will start both:
 python -m src.bot
 
 # Terminal 2 - Dashboard
-python run_dashboard.py
+python -m src.web.dashboard
 ```
 
 5. **First Time Setup**
@@ -161,7 +167,7 @@ python run_dashboard.py
 
 6. **Access dashboard**
 ```
-Production: https://jthweb.yugp.me:6767
+Production: https://jthweb.yugp.me
 Local: http://localhost:6767
 ```
 
@@ -174,11 +180,13 @@ Local: http://localhost:6767
 ```env
 # Discord Bot
 DISCORD_TOKEN=your_bot_token
+# Alternative env name used by some parts of the dashboard (the dashboard will fall back to DISCORD_TOKEN if not set)
+DISCORD_BOT_TOKEN=your_bot_token
 
 # Dashboard OAuth
 DISCORD_CLIENT_ID=your_client_id
 DISCORD_CLIENT_SECRET=your_client_secret
-DISCORD_REDIRECT_URI=https://jthweb.yugp.me:6767/callback
+DISCORD_REDIRECT_URI=https://jthweb.yugp.me/callback
 
 # Security
 FLASK_SECRET_KEY=random_secret_key
@@ -189,7 +197,7 @@ FLASK_SECRET_KEY=random_secret_key
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Select your application
 3. Go to **OAuth2** section
-4. Add redirect URL: `https://jthweb.yugp.me:6767/callback`
+4. Add redirect URL: `https://jthweb.yugp.me/callback`
 5. Copy Client ID and Client Secret
 6. Add to `.env` file
 

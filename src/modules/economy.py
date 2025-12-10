@@ -230,6 +230,15 @@ def setup_economy_commands(bot, economy: EconomySystem):
 
 def init_economy(bot):
     """Initialize economy system"""
+    # Ensure bot.db is present; fallback to Database module if necessary
+    if not hasattr(bot, 'db') or getattr(bot, 'db', None) is None:
+        try:
+            from ..database import db as default_db
+            bot.db = default_db
+            print("[WARN] bot.db not found; attached fallback database from modules.economy")
+        except Exception:
+            print("[ERROR] bot.db is required for economy initialization but not found.")
+            return None
     economy = EconomySystem(bot.db)
     bot.economy = economy
     setup_economy_commands(bot, economy)

@@ -405,6 +405,17 @@ class Database:
         
         conn.commit()
         conn.close()
+
+    def update_session(self, session_id: str, access_token: str, refresh_token: str, expires_at: str):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE dashboard_sessions
+            SET access_token = ?, refresh_token = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE session_id = ?
+        """, (access_token, refresh_token, expires_at, session_id))
+        conn.commit()
+        conn.close()
     
     # Economy Methods
     def get_user_balance(self, guild_id: int, user_id: int) -> int:
