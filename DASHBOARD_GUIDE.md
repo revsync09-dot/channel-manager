@@ -121,7 +121,7 @@ Modern, Discord-themed web dashboard for complete bot management. Access at `htt
 ## 💬 Discord Commands
 
 ### Server Setup
-- `/setup_dashboard` - Opens the dashboard with template options and the `/setup` modules button
+- `/setup_dashboard` - Opens the dashboard with template options and interactive `/setup` command buttons
 - `/sync` - Syncs slash commands (admin only)
 
 ### Moderation
