@@ -121,7 +121,9 @@ Modern, Discord-themed web dashboard for complete bot management. Access at `htt
 ## 💬 Discord Commands
 
 ### Server Setup
+- `/setup` - Opens the in-discord setup embed with module buttons
 - `/setup_dashboard` - Opens the dashboard with template options and interactive `/setup` command buttons
+- `/channel_setup` - Parses text or screenshot layouts into templates
 - `/sync` - Syncs slash commands (admin only)
 
 ### Moderation
@@ -386,9 +388,10 @@ For help with Channel Manager:
 1. Check this documentation
 2. Review error messages in console
 3. Verify environment configuration
-4. Test with `/setup_dashboard` command in Discord
+4. Test with `/setup` (or `/setup_dashboard`) command in Discord
 5. Contact bot developers
 
 ---
 
 **Made with ❤️ by Dudwig, Red_thz, and JThweb**
+**Only for you and your Commoinouty***
