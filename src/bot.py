@@ -1,11 +1,15 @@
-﻿import asyncio
-import os
-from urllib.parse import urlparse, urlunparse
-import sys
-import sqlite3
+import asyncio
 import json
+import math
+import os
+import sqlite3
+import sys
+import urllib.parse
+from datetime import datetime, timedelta
 from typing import Any
 
+import aiohttp
+import base64
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -94,46 +98,18 @@ RULES_DEFAULT = {
     "footerText": None,
 }
 RULES_STATE: dict[int, dict] = {}
+CHAT_MINUTES_PER_MESSAGE = 1
+VOICE_SESSION_STARTS: dict[tuple[int, int], datetime] = {}
+STATS_EMBED_COLOR = 0x2F3136
+QUICKCHART_CREATE_URL = "https://quickchart.io/chart/create"
+STAT_WINDOW_DAYS = 30
 
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Attach the shared Database instance to the bot so modules may use bot.db
 bot.db = db
-
-async def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
-    """Return True if the invoking user is the guild owner, server administrator, or app owner/owner team member."""
-    if not interaction.guild:
-        return False
-    owner_id = interaction.guild.owner_id
-    if not owner_id:
-        try:
-            owner = await interaction.guild.fetch_owner()
-            owner_id = owner.id
-        except Exception:
-            owner_id = None
-    if owner_id == interaction.user.id:
-        return True
-    member = interaction.user if isinstance(interaction.user, discord.Member) else await interaction.guild.fetch_member(interaction.user.id)
-    if member and member.guild_permissions.administrator:
-        return True
-    app_info = getattr(bot, '_app_info', None)
-    if app_info and hasattr(app_info, 'owner'):
-        if app_info.owner and app_info.owner.id == interaction.user.id:
-            return True
-        if hasattr(app_info, 'team') and app_info.team:
-            return any(m.id == interaction.user.id for m in app_info.team.members)
-    return False
-
-
-
-
-
-
-
 
 
 async def process_pending_setups():
@@ -288,26 +264,6 @@ async def process_pending_setups():
                         print(f"❌ Error setting up tickets for guild {guild_id}: {e}")
                         cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
                         conn.commit()
-
-                elif setup_type == 'template':
-                    try:
-                        # data may be a built-in name or a JSON string representing the template
-                        template = None
-                        raw = data.strip() if data else ''
-                        if raw.startswith('{') or raw.startswith('['):
-                            template = json.loads(raw)
-                        else:
-                            template = _get_dashboard_template(raw)
-                        _ensure_template_safe(template)
-                        await build_server_from_template(guild, template)
-
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
-                        print(f"✅ Applied template (queued) for guild {guild_id}")
-                    except Exception as e:
-                        print(f"❌ Error applying template for guild {guild_id}: {e}")
-                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
-                        conn.commit()
             
             conn.close()
         except Exception as e:
@@ -325,10 +281,6 @@ async def on_ready():
         pass
     print(f"Bot logged in as {bot.user}")
     
-    # Ensure DB is attached to bot for modules
-    if not hasattr(bot, 'db') or getattr(bot, 'db', None) is None:
-        bot.db = db
-
     # Store app info for owner checks
     bot._app_info = await bot.application_info()
     
@@ -443,11 +395,10 @@ async def on_interaction(interaction: discord.Interaction):
 async def on_message(message: discord.Message):
     if not message.guild or message.author.bot:
         return
+    _record_message_activity(message)
     config = get_verify_config(message.guild.id)
     verify_role_id = config.get("verifiedRole")
     unverified_role_id = config.get("unverifiedRole")
-    if not verify_role_id or not unverified_role_id:
-        return
     member = message.author if isinstance(message.author, discord.Member) else None
     if not member:
         return
@@ -472,6 +423,22 @@ async def on_message(message: discord.Message):
         return
 
 
+def _record_message_activity(message: discord.Message) -> None:
+    if not message.guild or message.author.bot:
+        return
+    try:
+        activity_date = message.created_at.date().isoformat()
+        db.record_user_activity(
+            message.guild.id,
+            message.author.id,
+            chat_minutes=CHAT_MINUTES_PER_MESSAGE,
+            activity_date=activity_date,
+        )
+    except Exception:  # pragma: no cover
+        print("Failed to record chat activity for", message.author.id, "in", message.guild.id)
+        return
+
+
 @bot.event
 async def on_member_join(member: discord.Member):
     config = get_verify_config(member.guild.id)
@@ -483,6 +450,70 @@ async def on_member_join(member: discord.Member):
                 await member.add_roles(role, reason="Auto assign unverified role on join")
             except Exception:
                 pass
+
+
+def _commit_voice_session(guild_id: int, user_id: int, start: datetime, end: datetime) -> None:
+    duration = (end - start).total_seconds()
+    if duration <= 0:
+        return
+    minutes = max(1, math.ceil(duration / 60))
+    db.record_user_activity(
+        guild_id,
+        user_id,
+        voice_minutes=minutes,
+        activity_date=start.date().isoformat(),
+    )
+
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    if member.bot:
+        return
+    guild = member.guild
+    if not guild:
+        return
+    key = (guild.id, member.id)
+    now = discord.utils.utcnow()
+    before_channel = before.channel
+    after_channel = after.channel
+    if before_channel is None and after_channel is not None:
+        VOICE_SESSION_STARTS[key] = now
+        return
+    if before_channel is not None and after_channel is None:
+        start = VOICE_SESSION_STARTS.pop(key, None)
+        if start:
+            _commit_voice_session(guild.id, member.id, start, now)
+        return
+    if before_channel and after_channel and before_channel.id != after_channel.id:
+        start = VOICE_SESSION_STARTS.pop(key, None)
+        if start:
+            _commit_voice_session(guild.id, member.id, start, now)
+        VOICE_SESSION_STARTS[key] = now
+
+
+# helper used by rule commands
+async def _is_owner_or_admin(interaction: discord.Interaction) -> bool:
+    if not interaction.guild:
+        return False
+    owner_id = interaction.guild.owner_id
+    if not owner_id:
+        try:
+            owner = await interaction.guild.fetch_owner()
+            owner_id = owner.id
+        except Exception:
+            owner_id = None
+    if owner_id == interaction.user.id:
+        return True
+    member = interaction.user if isinstance(interaction.user, discord.Member) else await interaction.guild.fetch_member(interaction.user.id)
+    if member and member.guild_permissions.administrator:
+        return True
+    app_info = getattr(bot, '_app_info', None)
+    if app_info and hasattr(app_info, 'owner'):
+        if app_info.owner and app_info.owner.id == interaction.user.id:
+            return True
+        if hasattr(app_info, 'team') and app_info.team:
+            return any(m.id == interaction.user.id for m in app_info.team.members)
+    return False
 
 
 class RulesView(discord.ui.View):
@@ -605,66 +636,139 @@ class RulesBulkModal(discord.ui.Modal, title="Update up to 5 rules"):
         await interaction.response.send_message(f"Updated {len(categories)} rules.", ephemeral=True)
 
 
-@bot.tree.command(name="setup", description="Load a prebuilt server template (customize via dashboard).")
-async def setup_command(interaction: discord.Interaction):
+class SetupDashboardView(discord.ui.View):
+    """Buttons for the /setup_dashboard command."""
+
+    def __init__(self, dashboard_url: str, author_id: int):
+        super().__init__(timeout=180)
+        self.author_id = author_id
+        self.add_item(
+            discord.ui.Button(
+                label="Open Dashboard",
+                style=discord.ButtonStyle.link,
+                url=dashboard_url,
+            )
+        )
+        self.add_item(
+            discord.ui.Button(
+                label="Support Server",
+                style=discord.ButtonStyle.link,
+                url="https://discord.gg/zjr3Umcu",
+            )
+        )
+
+    def _build_modules_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="Setup Modules Overview",
+            description=(
+                "Preview the giveaway setup, text import, and other dashboard modules. "
+                "Use this list before applying a template or importing channels."
+            ),
+            color=EMBED_COLOR,
+        )
+        embed.set_thumbnail(url=EMBED_THUMB)
+        embed.add_field(
+            name="Giveaway Setup",
+            value=(
+                "- `/giveaway_start`, `/giveaway_end`, `/giveaway_reroll`\n"
+                "- Dashboard timers, prize pools, and transcripts\n"
+                "- Works with template buttons for seasonal drops"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Text Import Builder",
+            value=(
+                "- Paste layouts in **Dashboard -> Templates -> Text Import**\n"
+                "- Use the snippet from `/setup_dashboard` to clone categories\n"
+                "- Supports channel topics and hidden sections"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Verification & Rules",
+            value=(
+                "- `/verify`, `/verify_setup`, `/rules`, `/rules_setup`\n"
+                "- Configure banners, roles, buttons, and dropdowns\n"
+                "- Keeps verification clean with ephemeral replies"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Tickets, Modmail, Utilities",
+            value=(
+                "- Ticket workflows, escalation roles, and archives\n"
+                "- Modmail routing and auto replies\n"
+                "- Leveling, button roles, announcements, embeds"
+            ),
+            inline=False,
+        )
+        embed.set_footer(text="Tap the /setup button anytime for this module overview.")
+        return embed
+
+    @discord.ui.button(label="/setup", style=discord.ButtonStyle.primary, custom_id="setup_dashboard_modules")
+    async def modules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the user who opened /setup_dashboard can view this panel.", ephemeral=True
+            )
+            return
+        await interaction.response.send_message(embed=self._build_modules_embed(), ephemeral=True)
+
+
+@bot.tree.command(name="setup_dashboard", description="Load a prebuilt server template (customize via dashboard).")
+async def setup_dashboard_command(interaction: discord.Interaction):
     if not await _is_owner_or_admin(interaction):
         await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
         return
     
-    raw_dashboard_url = os.getenv("DASHBOARD_URL", "https://jthweb.yugp.me")
-    # Normalize URL to remove explicit port if present so the dashboard button doesn't show :6767
-    try:
-        parsed = urlparse(raw_dashboard_url)
-        if parsed.scheme and parsed.hostname:
-            dashboard_url = urlunparse((parsed.scheme, parsed.hostname, parsed.path or "", parsed.params, parsed.query, parsed.fragment))
-        else:
-            dashboard_url = raw_dashboard_url
-    except Exception:
-        dashboard_url = raw_dashboard_url
+    dashboard_url = os.getenv("DASHBOARD_URL", "https://jthweb.yugp.me:6767")
     
     embed = discord.Embed(
-        title="🚀 Server Setup",
+        title="Setup Dashboard",
         description=(
             "**Welcome to Channel Manager!**\n\n"
-            "Setup your server with pre-built templates using our web dashboard.\n\n"
+            "Build or refresh your server with pre-built templates using the dashboard.\n\n"
             "**Available Templates:**\n"
-            "🎮 Gaming Server - Perfect for gaming communities\n"
-            "💬 Community Server - Great for social servers\n"
-            "🎫 Support Server - Ideal for customer support\n"
-            "🎨 Creative Server - For artists and creators\n\n"
+            "- Gaming Server · matches + scrims ready\n"
+            "- Community Server · hangouts and clubs\n"
+            "- Support Server · structured ticket hub\n"
+            "- Creative Server · artist-friendly boards\n\n"
             "**Quick Start:**\n"
-            "1. Click the button below to open the dashboard\n"
+            "1. Run `/setup_dashboard` or hit the dashboard button\n"
             "2. Login with your Discord account\n"
-            "3. Select your server and choose a template\n"
-            "4. Customize channels, roles, and settings\n\n"
+            "3. Pick a server + template bundle\n"
+            "4. Customize channels, roles, and modules\n\n"
             "**Features:**\n"
-            "✨ Server templates\n"
-            "📝 Custom commands\n"
-            "🔨 Moderation tools\n"
-            "📢 Announcements\n"
-            "🎭 Role management\n"
-            "📊 Embed maker\n"
+            "- Server templates & channel builder\n"
+            "- Custom commands + automation\n"
+            "- Moderation, logs, announcements\n"
+            "- Role manager & embed maker\n"
         ),
         color=EMBED_COLOR,
     )
     embed.set_thumbnail(url=EMBED_THUMB)
+    embed.add_field(
+        name="Module Snapshot",
+        value=(
+            "- Giveaway setup (timers, winners, rerolls)\n"
+            "- Text import/export for channels and roles\n"
+            "- Verification, ticketing, leveling, announcements\n"
+            "- Embed maker, auto mod, and other dashboard tools"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Need text import help?",
+        value=(
+            "Use the `/setup` button below to open an embed with giveaway setup notes, "
+            "text import examples, and module-by-module guidance."
+        ),
+        inline=False,
+    )
     embed.set_footer(text="All bot customization happens via the web dashboard")
     
-    view = discord.ui.View()
-    view.add_item(
-        discord.ui.Button(
-            label="🌐 Open Dashboard",
-            style=discord.ButtonStyle.link,
-            url=dashboard_url,
-        )
-    )
-    view.add_item(
-        discord.ui.Button(
-            label="Support Server",
-            style=discord.ButtonStyle.link,
-            url="https://discord.gg/zjr3Umcu",
-        )
-    )
+    view = SetupDashboardView(dashboard_url, interaction.user.id)
     
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
@@ -737,7 +841,7 @@ async def help_command(interaction: discord.Interaction):
     embed.set_thumbnail(url=EMBED_THUMB)
     embed.description = "\n".join(
         [
-            "1) Run /setup and pick what you need.",
+            "1) Run /setup_dashboard (or tap the Setup Dashboard button) and pick what you need.",
             "2) For text import, paste something like this:",
             "```",
             channel_example,
@@ -842,8 +946,7 @@ class VerifySetupModal(discord.ui.Modal, title="Verify Setup"):
         self.title_input = discord.ui.TextInput(label="Title", required=False, max_length=100, default="Verify to access")
         self.desc_input = discord.ui.TextInput(label="Description", required=False, style=discord.TextStyle.long, default="Click verify to unlock access.")
         self.banner_input = discord.ui.TextInput(label="Banner URL (optional)", required=False)
-        self.footer_input = discord.ui.TextInput(label="Footer (optional)", required=False, max_length=120)
-        for item in (self.unverified, self.verified, self.title_input, self.desc_input, self.banner_input, self.footer_input):
+        for item in (self.unverified, self.verified, self.title_input, self.desc_input, self.banner_input):
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -858,7 +961,6 @@ class VerifySetupModal(discord.ui.Modal, title="Verify Setup"):
                 "title": str(self.title_input).strip() or "Verify to access",
                 "description": str(self.desc_input).strip() or "Click verify to unlock access.",
                 "bannerUrl": str(self.banner_input).strip() or None,
-                "footerText": str(self.footer_input).strip() or None,
             }
         )
         update_verify_config(interaction.guild_id, config)
@@ -978,17 +1080,18 @@ async def verify_command(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="verify_setup", description="Owner: configure verify roles/banner/footer.")
-@app_commands.check(_is_owner_or_admin)
 async def verify_setup_command(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message("Use this in a server.", ephemeral=True)
         return
+    if not await _is_owner_or_admin(interaction):
+        await _safe_send(
+            interaction,
+            content="Only the server owner or admins can use /verify_setup. If you believe you have access, try again after I finish syncing.",
+            ephemeral=True,
+        )
+        return
     await interaction.response.send_modal(VerifySetupModal())
-
-
-@verify_setup_command.error
-async def verify_setup_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    await _safe_send(interaction, content="Only the server owner can use /verify_setup inside a server.", ephemeral=True)
 
 
 @bot.tree.command(name="giveaway_start", description="Admin+: start a giveaway.")
@@ -1073,6 +1176,7 @@ async def delete_roles_command(interaction: discord.Interaction):
     await interaction.followup.send(f"Delete finished. Roles removed: {len(delete_tasks)}.", ephemeral=True)
 
 
+
 def _ensure_template_safe(template: Any) -> None:
     if not template or not isinstance(template, dict) or not isinstance(template.get("categories"), list):
         raise ValueError("Template is not valid.")
@@ -1084,128 +1188,271 @@ def _ensure_template_safe(template: Any) -> None:
         raise ValueError(f"Too many roles ({role_count}).")
 
 
-def _get_dashboard_template(name: str) -> dict:
-    name = (name or "").lower()
-    staff_roles = [
-        {"name": "👑 Admin", "color": 0xF04747, "permissions": 8, "hoist": True, "mentionable": False},
-        {"name": "🛡️ Moderator", "color": 0x5865F2, "permissions": 0, "hoist": True, "mentionable": True},
-        {"name": "✅ Verified", "color": 0x43B581, "permissions": 0, "hoist": False, "mentionable": True},
-    ]
-    templates = {
-        "gaming": {
-            "roles": staff_roles + [{"name": "🎮 Gamer", "color": 0x00FF88, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 ANNOUNCEMENTS",
-                    "channels": [
-                        {"name": "📢-news", "type": "text", "topic": "Server updates"},
-                        {"name": "🎉-events", "type": "text", "topic": "Giveaways and tournaments"},
-                    ],
-                },
-                {
-                    "name": "💬 LOBBY",
-                    "channels": [
-                        {"name": "👋-welcome", "type": "text", "topic": "Introduce yourself"},
-                        {"name": "💭-chat", "type": "text", "topic": "General chat"},
-                        {"name": "🔊 Squad 1", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "🎮 GAMES",
-                    "channels": [
-                        {"name": "🥇-ranked", "type": "text", "topic": "Ranked coordination"},
-                        {"name": "🤝-lfg", "type": "text", "topic": "Find teammates"},
-                        {"name": "🎧 Game Chat", "type": "voice"},
-                    ],
-                },
-            ],
+async def _fetch_avatar_data(url: str) -> str | None:
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, timeout=10) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
+                content_type = resp.headers.get("Content-Type", "image/png")
+        except Exception:  # pragma: no cover
+            return None
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
+
+
+@bot.tree.command(name="stats", description="Show recent chat and voice activity.")
+@app_commands.describe(user="User to query (defaults to you)", days="Number of days to show (1-30)")
+async def stats_command(
+    interaction: discord.Interaction,
+    user: discord.User | None = None,
+    days: app_commands.Range[int, 1, 30] = STAT_WINDOW_DAYS,
+):
+    if not interaction.guild:
+        await _safe_send(interaction, content="Please run this in a server.", ephemeral=True)
+        return
+    target = user or interaction.user
+    await _ensure_defer(interaction)
+
+    window_days = days
+    today = discord.utils.utcnow().date()
+    start_date = today - timedelta(days=window_days - 1)
+    date_series = [start_date + timedelta(days=i) for i in range(window_days)]
+    summary_rows = db.get_user_activity_summary(
+        interaction.guild.id,
+        target.id,
+        start_date.isoformat(),
+        today.isoformat(),
+    )
+    has_any_activity = bool(summary_rows) or db.has_user_activity(interaction.guild.id, target.id)
+    if not has_any_activity:
+        await _safe_send(interaction, content="No activity data found for this user.", ephemeral=True)
+        return
+
+    activity_map = {
+        row["activity_date"]: (
+            int(row.get("chat_minutes") or 0),
+            int(row.get("voice_minutes") or 0),
+        )
+        for row in summary_rows
+    }
+    chat_values: list[int] = []
+    voice_values: list[int] = []
+    for single_day in date_series:
+        iso_day = single_day.isoformat()
+        chat, voice = activity_map.get(iso_day, (0, 0))
+        chat_values.append(chat)
+        voice_values.append(voice)
+
+    total_days = len(chat_values) or 1
+    today_chat = chat_values[-1]
+    today_voice = voice_values[-1]
+    avg_chat = sum(chat_values) / total_days
+    avg_voice = sum(voice_values) / total_days
+    labels = [day.isoformat() for day in date_series]
+
+    chart_data = {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": "Chat Minutes",
+                "borderColor": "#3498db",
+                "backgroundColor": "#3498db",
+                "borderWidth": 3,
+                "tension": 0.3,
+                "pointRadius": 3,
+                "pointBackgroundColor": "#3498db",
+                "data": chat_values,
+                "fill": False,
+                "spanGaps": True,
+            },
+            {
+                "label": "Voice Minutes",
+                "borderColor": "#2ecc71",
+                "backgroundColor": "#2ecc71",
+                "borderWidth": 3,
+                "tension": 0.3,
+                "pointRadius": 3,
+                "pointBackgroundColor": "#2ecc71",
+                "data": voice_values,
+                "fill": False,
+                "spanGaps": True,
+            },
+        ],
+    }
+
+    avatar = getattr(getattr(target, "display_avatar", target.avatar), "url", None)
+    avatar_data = await _fetch_avatar_data(avatar) if avatar else None
+
+    header_plugin = (
+        '{'
+        '"id":"statsHeader",'
+        '"beforeDraw":function(chart){'
+        "const ctx=chart.ctx;"
+        "const opts=chart.config.options.plugins.statsHeader||{};"
+        "const width=chart.width;"
+        "const height=chart.height;"
+        "ctx.save();"
+        "ctx.fillStyle='white';"
+        "ctx.fillRect(0,0,width,height);"
+        "const drawAvatar=function(img){"
+        "const centerX=40+35;"
+        "const centerY=35+35;"
+        "const radius=35;"
+        "ctx.save();"
+        "ctx.beginPath();"
+        "ctx.arc(centerX,centerY,radius,0,Math.PI*2);"
+        "ctx.closePath();"
+        "ctx.clip();"
+        "ctx.drawImage(img,40,35,radius*2,radius*2);"
+        "ctx.restore();"
+        "ctx.save();"
+        "ctx.beginPath();"
+        "ctx.arc(centerX,centerY,radius,0,Math.PI*2);"
+        "ctx.lineWidth=2;"
+        "ctx.strokeStyle='#ddd';"
+        "ctx.stroke();"
+        "ctx.restore();"
+        "};"
+        "let avatarDrawn=false;"
+        "const renderAvatar=function(img){"
+        "if(avatarDrawn)return;"
+        "avatarDrawn=true;"
+        "drawAvatar(img);"
+        "};"
+        "const drawHeader=function(){"
+        "ctx.save();"
+        "ctx.font='bold 26px Sans-serif';"
+        "ctx.fillStyle='#000';"
+        "ctx.textBaseline='middle';"
+        "ctx.fillText(opts.username||'',100,50);"
+        "ctx.font='16px Sans-serif';"
+        "ctx.fillStyle='#555';"
+        "const avgChat=parseFloat(opts.avgChat)||0;"
+        "const avgVoice=parseFloat(opts.avgVoice)||0;"
+        "ctx.fillText('Today\\'s Activity — Chat '+(opts.todayChat||0)+' min, Voice '+(opts.todayVoice||0)+' min',100,85);"
+        "ctx.fillText('30-Day Average — Chat '+avgChat.toFixed(1)+' min, Voice '+avgVoice.toFixed(1)+' min',100,115);"
+        "ctx.restore();"
+        "};"
+        "ctx.save();"
+        "ctx.strokeStyle='#ddd';"
+        "ctx.lineWidth=1;"
+        "ctx.beginPath();"
+        "ctx.moveTo(0,150);"
+        "ctx.lineTo(width,150);"
+        "ctx.stroke();"
+        "ctx.restore();"
+        "let headerDrawn=false;"
+        "const renderHeader=function(){"
+        "if(headerDrawn)return;"
+        "headerDrawn=true;"
+        "drawHeader();"
+        "};"
+        "if(opts.avatarData){"
+        "const img=new Image();"
+        "img.onload=function(){"
+        "renderAvatar(img);"
+        "renderHeader();"
+        "};"
+        "img.src=opts.avatarData;"
+        "if(img.complete){"
+        "renderAvatar(img);"
+        "renderHeader();"
+        "}"
+        "}else{"
+        "renderHeader();"
+        "}"
+        "ctx.restore();"
+        "}"
+        "}"
+    )
+
+    options = {
+        "responsive": True,
+        "maintainAspectRatio": False,
+        "interaction": {"mode": "index", "intersect": False},
+        "layout": {"padding": {"top": 170, "left": 40, "right": 40, "bottom": 40}},
+        "scales": {
+            "x": {
+                "grid": {"color": "rgba(0,0,0,0.05)"},
+                "ticks": {"color": "#333333", "maxRotation": 0, "minRotation": 0},
+            },
+            "y": {
+                "grid": {"color": "rgba(0,0,0,0.05)"},
+                "ticks": {"color": "#333333"},
+            },
         },
-        "community": {
-            "roles": staff_roles + [{"name": "🎭 Member", "color": 0x99AAB5, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 INFO",
-                    "channels": [
-                        {"name": "📢-announcements", "type": "text"},
-                        {"name": "📜-rules", "type": "text"},
-                    ],
-                },
-                {
-                    "name": "💬 COMMUNITY",
-                    "channels": [
-                        {"name": "general", "type": "text", "topic": "Chat with everyone"},
-                        {"name": "media-share", "type": "text", "topic": "Images and clips"},
-                        {"name": "Lounge", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "🎉 EVENTS",
-                    "channels": [
-                        {"name": "giveaways", "type": "text"},
-                        {"name": "polls", "type": "text"},
-                    ],
-                },
-            ],
-        },
-        "support": {
-            "roles": staff_roles + [{"name": "🙋 Customer", "color": 0xFFB347, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "ℹ️ START HERE",
-                    "channels": [
-                        {"name": "welcome", "type": "text"},
-                        {"name": "faq", "type": "text", "topic": "Common questions"},
-                    ],
-                },
-                {
-                    "name": "🎟️ SUPPORT",
-                    "channels": [
-                        {"name": "create-ticket", "type": "text", "topic": "Open support tickets"},
-                        {"name": "transcripts", "type": "text", "topic": "Closed ticket logs"},
-                        {"name": "Support VC", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "📚 KNOWLEDGE BASE",
-                    "channels": [
-                        {"name": "guides", "type": "text"},
-                        {"name": "updates", "type": "text"},
-                    ],
-                },
-            ],
-        },
-        "creative": {
-            "roles": staff_roles + [{"name": "🎨 Creator", "color": 0xE67E22, "permissions": 0}],
-            "categories": [
-                {
-                    "name": "📣 NEWS",
-                    "channels": [
-                        {"name": "announcements", "type": "text"},
-                        {"name": "roadmap", "type": "text"},
-                    ],
-                },
-                {
-                    "name": "🖼️ SHOWCASE",
-                    "channels": [
-                        {"name": "art-drop", "type": "text", "topic": "Share art"},
-                        {"name": "critiques", "type": "text", "topic": "Get feedback"},
-                        {"name": "Studio", "type": "voice"},
-                    ],
-                },
-                {
-                    "name": "💡 COLLAB",
-                    "channels": [
-                        {"name": "ideas", "type": "text"},
-                        {"name": "work-in-progress", "type": "text"},
-                    ],
-                },
-            ],
+        "plugins": {
+            "legend": {
+                "position": "bottom",
+                "labels": {"color": "#333333", "boxWidth": 12, "usePointStyle": True},
+            },
+            "statsHeader": {
+                "avatarData": avatar_data,
+                "username": f"{target.display_name}",
+                "todayChat": today_chat,
+                "todayVoice": today_voice,
+                "avgChat": avg_chat,
+                "avgVoice": avg_voice,
+            },
         },
     }
-    return templates.get(name) or templates["community"]
+    config_str = (
+        "{"
+        '"type":"line",'
+        f'"data":{json.dumps(chart_data)},'
+        f'"options":{json.dumps(options)},'
+        f'"plugins":[{header_plugin}]'
+        "}"
+    )
+    chart_request_payload = {
+        "chart": config_str,
+        "backgroundColor": "white",
+        "width": 900,
+        "height": 700,
+        "format": "png",
+        "version": 2,
+    }
 
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                QUICKCHART_CREATE_URL,
+                json=chart_request_payload,
+                timeout=10,
+            ) as response:
+                resp_text = await response.text()
+                resp_data = None
+                try:
+                    resp_data = json.loads(resp_text)
+                except Exception:
+                    resp_data = {}
+                if response.status != 200 or "url" not in resp_data:
+                    print("QuickChart create failed", response.status, resp_text)
+                    raise aiohttp.ClientError("quickchart create failed")
+                chart_url = resp_data["url"]
+    except Exception as exc:
+        print("QuickChart request failed:", exc)
+        await _safe_send(
+            interaction,
+            content="Unable to render the activity chart right now. Please try again later.",
+            ephemeral=True,
+        )
+        return
 
- 
+    target_name = getattr(target, "display_name", None) or getattr(target, "name", str(target))
+    embed_title = (
+        "Your Activity Statistics"
+        if target.id == interaction.user.id
+        else f"{target_name}'s Activity Statistics"
+    )
+    summary_lines = (
+        f"Today's Activity - Chat: **{today_chat}** min, Voice: **{today_voice}** min\n"
+        f"{window_days}-Day Average - Chat: **{avg_chat:.1f}** min, Voice: **{avg_voice:.1f}** min"
+    )
+    embed = discord.Embed(title=embed_title, description=summary_lines, color=STATS_EMBED_COLOR)
+    embed.set_image(url=chart_url)
+    await _safe_send(interaction, embed=embed)
 
 
 def _build_rules_embed(config: dict) -> discord.Embed:
