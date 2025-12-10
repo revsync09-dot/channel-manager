@@ -155,7 +155,7 @@ python run_dashboard.py
 
 5. **First Time Setup**
 - Invite the bot to your server (use dashboard invite button)
-- Run `/setup_dashboard` in Discord to open the dashboard and module overview button
+- Run `/setup_dashboard` in Discord to open the dashboard plus the interactive `/setup` command buttons
 - Visit the dashboard to configure your server
 - Apply a template or customize manually
 
@@ -198,7 +198,7 @@ FLASK_SECRET_KEY=random_secret_key
 ## 📚 Commands
 
 ### Server Building
-- `/setup_dashboard` - Open server builder panel and module overview button
+- `/setup_dashboard` - Open server builder panel + interactive `/setup` command buttons
 - `/delete_channel` - Delete all channels
 - `/delete_roles` - Delete all roles
 - `/health` - Bot status and health check
