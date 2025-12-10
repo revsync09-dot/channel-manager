@@ -6,7 +6,7 @@ import sqlite3
 import sys
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Dict, List
 
 import aiohttp
 import base64
@@ -34,6 +34,7 @@ from .modules.moderation import setup_moderation_commands
 from .modules.custom_commands import init_custom_commands, setup_custom_command_commands
 from .modules.economy import init_economy
 from .modules.leveling import init_leveling
+from .modules.image_analyzer import analyze_image_stub
 from .database import db
 
 load_dotenv()
@@ -642,7 +643,9 @@ SETUP_COMMAND_GROUPS = {
         "emoji": "🧱",
         "description": "Templates, cleanup helpers, dashboards, and diagnostics.",
         "commands": [
+            ("/setup", "Open this in-Discord module panel."),
             ("/setup_dashboard", "Open the dashboard and module buttons."),
+            ("/channel_setup", "Parse text or screenshot layouts into templates."),
             ("/help", "Show channel builder + text import snippets."),
             ("/health", "Check bot status, uptime, and latency."),
             ("/stats", "Recent chat + voice stats (per guild)."),
@@ -746,7 +749,7 @@ class SetupModulesActionView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "Only the user who opened /setup_dashboard can use these buttons.", ephemeral=True
+                "Only the user who opened this panel can use these buttons.", ephemeral=True
             )
             return False
         return True
@@ -831,67 +834,240 @@ class SetupDashboardView(discord.ui.View):
             )
         )
 
-    def _build_modules_embed(self) -> discord.Embed:
-        embed = discord.Embed(
-            title="Setup Modules Overview",
-            description=(
-                "Preview giveaway setup, text import, rules, verification, and tickets. "
-                "Use the buttons below to open an in-Discord command reference for every module."
-            ),
-            color=EMBED_COLOR,
-        )
-        embed.set_thumbnail(url=EMBED_THUMB)
-        embed.add_field(
-            name="Giveaway Setup",
-            value=(
-                "- `/giveaway_start` and `/giveaway_end`\n"
-                "- Dashboard timers, prize pools, and transcripts\n"
-                "- Works with template buttons for seasonal drops"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Text Import Builder",
-            value=(
-                "- Paste layouts in **Dashboard -> Templates -> Text Import**\n"
-                "- Use the snippet from `/setup_dashboard` to clone categories\n"
-                "- Supports channel topics and hidden sections"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Verification & Rules",
-            value=(
-                "- `/verify`, `/verify_setup`, `/rules`, `/rules_setup`\n"
-                "- Configure banners, roles, buttons, and dropdowns\n"
-                "- Keeps verification clean with ephemeral replies"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Tickets, Modmail, Utilities",
-            value=(
-                "- Ticket workflows, escalation roles, and archives\n"
-                "- Modmail routing and auto replies\n"
-                "- Leveling, button roles, announcements, embeds"
-            ),
-            inline=False,
-        )
-        embed.set_footer(text="Tap the /setup button anytime for this module overview.")
-        return embed
-
     @discord.ui.button(label="/setup", style=discord.ButtonStyle.primary, custom_id="setup_dashboard_modules")
     async def modules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "Only the user who opened /setup_dashboard can view this panel.", ephemeral=True
+                "Only the user who opened this panel can view it.", ephemeral=True
             )
             return
         await interaction.response.send_message(
-            embed=self._build_modules_embed(),
+            embed=_build_setup_modules_embed(),
             view=SetupModulesActionView(self.author_id),
             ephemeral=True,
         )
+
+
+def _build_setup_modules_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="Setup Modules Overview",
+        description=(
+            "Preview giveaway setup, text import, rules, verification, and tickets.\n"
+            "Use the buttons below to open an in-Discord command reference for every module."
+        ),
+        color=EMBED_COLOR,
+    )
+    embed.set_thumbnail(url=EMBED_THUMB)
+    embed.add_field(
+        name="Giveaway Setup",
+        value=(
+            "- `/giveaway_start` and `/giveaway_end`\n"
+            "- Dashboard timers, prize pools, and transcripts\n"
+            "- Works with template buttons for seasonal drops"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Text Import Builder",
+        value=(
+            "- Paste layouts in **Dashboard -> Templates -> Text Import**\n"
+            "- Use the snippet from `/setup` or `/setup_dashboard` to clone categories\n"
+            "- Supports channel topics and hidden sections"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Verification & Rules",
+        value=(
+            "- `/verify`, `/verify_setup`, `/rules`, `/rules_setup`\n"
+            "- Configure banners, roles, buttons, and dropdowns\n"
+            "- Keeps verification clean with ephemeral replies"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Tickets, Modmail, Utilities",
+        value=(
+            "- Ticket workflows, escalation roles, and archives\n"
+            "- Modmail routing and auto replies\n"
+            "- Leveling, button roles, announcements, embeds"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Tap /setup anytime for this overview and module buttons.")
+    return embed
+
+
+class ChannelSetupView(discord.ui.View):
+    """Buttons for parsing text layouts or analyzing screenshots."""
+
+    def __init__(self, author_id: int):
+        super().__init__(timeout=240)
+        self.author_id = author_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the user who opened this panel can use these buttons.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Paste Text Layout", style=discord.ButtonStyle.primary, custom_id="channel_setup_text")
+    async def text_parser_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ChannelTextImportModal())
+
+    @discord.ui.button(label="Analyze Image", style=discord.ButtonStyle.secondary, custom_id="channel_setup_image")
+    async def image_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ChannelImageAnalyzeModal())
+
+
+class ChannelTextImportModal(discord.ui.Modal, title="Channel Text Parser"):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.layout_input = discord.ui.TextInput(
+            label="Channel layout text",
+            style=discord.TextStyle.long,
+            placeholder="INFORMATION (category)\n  #announcements\n  #rules\n\nSUPPORT (category)\n  #help-desk",
+            max_length=1900,
+        )
+        self.add_item(self.layout_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        raw = str(self.layout_input).strip()
+        if not raw:
+            await interaction.response.send_message("No layout text provided.", ephemeral=True)
+            return
+        try:
+            template = parse_text_structure(raw)
+        except Exception as error:
+            await interaction.response.send_message(f"Failed to parse text: {error}", ephemeral=True)
+            return
+        await _send_template_preview(interaction, "Text Parser", template)
+
+
+class ChannelImageAnalyzeModal(discord.ui.Modal, title="Analyze Channel Screenshot"):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.url_input = discord.ui.TextInput(
+            label="Image URL",
+            placeholder="https://example.com/server-layout.png",
+            max_length=300,
+        )
+        self.add_item(self.url_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        url = str(self.url_input).strip()
+        if not url:
+            await interaction.response.send_message("Provide an image URL to analyze.", ephemeral=True)
+            return
+        loop = asyncio.get_running_loop()
+        template = await loop.run_in_executor(None, analyze_image_stub, url)
+        await _send_template_preview(interaction, "Image Analyzer", template)
+
+
+def _build_template_preview_embed(source_label: str, template: Dict[str, Any]) -> discord.Embed:
+    categories = template.get("categories") or []
+    roles = template.get("roles") or []
+    total_channels = sum(len(cat.get("channels", [])) for cat in categories)
+    summary_text = template.get("summary") or f"{len(categories)} categories / {total_channels} channels"
+    embed = discord.Embed(
+        title=f"{source_label} Result",
+        description=summary_text,
+        color=EMBED_COLOR,
+    )
+    preview_lines: List[str] = []
+    for category in categories[:4]:
+        channels = category.get("channels", [])
+        channel_preview = ", ".join(f"`{ch.get('name', 'channel')}`" for ch in channels[:3])
+        preview_lines.append(
+            f"**{category.get('name', 'Category')}** ({len(channels)} ch) {channel_preview}".strip()
+        )
+    embed.add_field(name="Categories Preview", value="\n".join(preview_lines) or "No categories detected.", inline=False)
+    if roles:
+        embed.add_field(name="Roles Detected", value=f"{len(roles)} role definition(s) found.", inline=False)
+    embed.set_footer(text="Apply directly via the button below or import from Dashboard > Templates > Text Import.")
+    return embed
+
+
+def _build_channel_setup_intro_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="Channel Setup Wizard",
+        description=(
+            "Use the buttons below to parse raw text layouts or analyze a screenshot.\n"
+            "You'll get a summarized template that can be imported into the dashboard."
+        ),
+        color=EMBED_COLOR,
+    )
+    embed.add_field(
+        name="Text Parser",
+        value="Paste plain text or copied channel lists. Works great with sample snippets from `/help`.",
+        inline=False,
+    )
+    embed.add_field(
+        name="Image Analyzer",
+        value="Provide a public image URL. OCR will try to detect categories/channels from the screenshot.",
+        inline=False,
+    )
+    embed.set_footer(text="After reviewing the preview, open the dashboard to apply the template.")
+    return embed
+
+
+class ChannelTemplateActionView(discord.ui.View):
+    """Actions available after parsing channel templates."""
+
+    def __init__(self, template: Dict[str, Any], author_id: int, guild_id: int | None, source_label: str):
+        super().__init__(timeout=240)
+        self.template = template
+        self.author_id = author_id
+        self.guild_id = guild_id
+        self.source_label = source_label
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the user who generated this template can use these buttons.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Apply Template (Create Channels)", style=discord.ButtonStyle.success)
+    async def apply_template(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.guild:
+            await interaction.response.send_message("Run this inside a server to build channels.", ephemeral=True)
+            return
+        if self.guild_id and interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This template belongs to another server. Run `/channel_setup` here to generate a fresh copy.",
+                ephemeral=True,
+            )
+            return
+        if not await _is_owner_or_admin(interaction):
+            await interaction.response.send_message("Only the server owner or admins can apply templates.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await build_server_from_template(interaction.guild, self.template)
+        except Exception as error:
+            await interaction.followup.send(f"Failed to build template: {error}", ephemeral=True)
+            return
+
+        cat_count = len(self.template.get("categories") or [])
+        channel_count = sum(len(cat.get("channels", [])) for cat in self.template.get("categories", []))
+        await interaction.followup.send(
+            f"✅ Applied **{cat_count}** categories / **{channel_count}** channels from {self.source_label}. "
+            "Use the dashboard if you need to fine-tune ordering or roles.",
+            ephemeral=True,
+        )
+
+
+async def _send_template_preview(
+    interaction: discord.Interaction, source_label: str, template: Dict[str, Any]
+) -> None:
+    embed = _build_template_preview_embed(source_label, template)
+    view = ChannelTemplateActionView(template, interaction.user.id, interaction.guild_id, source_label)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 @bot.tree.command(name="setup_dashboard", description="Load a prebuilt server template (customize via dashboard).")
@@ -939,7 +1115,7 @@ async def setup_dashboard_command(interaction: discord.Interaction):
     embed.add_field(
         name="Need text import help?",
         value=(
-            "Use the `/setup` button below to open an embed with giveaway setup notes, "
+            "Use `/setup` (or the button below) to open an embed with giveaway setup notes, "
             "text import examples, and module-by-module guidance."
         ),
         inline=False,
@@ -948,6 +1124,28 @@ async def setup_dashboard_command(interaction: discord.Interaction):
     
     view = SetupDashboardView(dashboard_url, interaction.user.id)
     
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@bot.tree.command(name="setup", description="Show the in-Discord setup panel with module buttons.")
+async def setup_command(interaction: discord.Interaction):
+    if not await _is_owner_or_admin(interaction):
+        await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
+        return
+
+    view = SetupModulesActionView(interaction.user.id)
+    overview_embed = _build_setup_modules_embed()
+    await interaction.response.send_message(embed=overview_embed, view=view, ephemeral=True)
+
+
+@bot.tree.command(name="channel_setup", description="Parse text or screenshot layouts into templates.")
+async def channel_setup_command(interaction: discord.Interaction):
+    if not await _is_owner_or_admin(interaction):
+        await interaction.response.send_message("Only the server owner or admins can use this command.", ephemeral=True)
+        return
+
+    embed = _build_channel_setup_intro_embed()
+    view = ChannelSetupView(interaction.user.id)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
@@ -1019,14 +1217,14 @@ async def help_command(interaction: discord.Interaction):
     embed.set_thumbnail(url=EMBED_THUMB)
     embed.description = "\n".join(
         [
-            "1) Run /setup_dashboard (or tap the Setup Dashboard button) and pick what you need.",
-            "2) For text import, paste something like this:",
-            "```",
-            channel_example,
-            "```",
-            "3) Roles import example:",
+            "1) Run /setup (or /setup_dashboard) and pick what you need.",
+            "2) Roles import example:",
             "```",
             roles_block,
+            "```",
+            "3) For text import, paste something like this:",
+            "```",
+            channel_example,
             "```",
             "Notes:",
             "- Bot must be in the source server to clone.",
@@ -1044,8 +1242,17 @@ async def help_command(interaction: discord.Interaction):
             "Giveaway module:",
             "- /giveaway_start (owner) to start a giveaway (prize/duration/description)",
             "- /giveaway_end (owner) to end and get transcript",
+            "",
+            "Channel builder tips:",
+            "- Use `/channel_setup` to parse text or screenshot layouts and apply them instantly.",
         ]
     )
+    for group in SETUP_COMMAND_GROUPS.values():
+        embed.add_field(
+            name=f"{group['emoji']} {group['label']}",
+            value=_format_command_list(group["commands"]),
+            inline=False,
+        )
     embed.set_footer(text="Channel Manager - simple help")
     await _safe_send(interaction, embed=embed, ephemeral=True)
 
