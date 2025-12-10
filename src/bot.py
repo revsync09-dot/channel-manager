@@ -636,6 +636,180 @@ class RulesBulkModal(discord.ui.Modal, title="Update up to 5 rules"):
         await interaction.response.send_message(f"Updated {len(categories)} rules.", ephemeral=True)
 
 
+SETUP_COMMAND_GROUPS = {
+    "server": {
+        "label": "Server Setup & Utilities",
+        "emoji": "🧱",
+        "description": "Templates, cleanup helpers, dashboards, and diagnostics.",
+        "commands": [
+            ("/setup_dashboard", "Open the dashboard and module buttons."),
+            ("/help", "Show channel builder + text import snippets."),
+            ("/health", "Check bot status, uptime, and latency."),
+            ("/stats", "Recent chat + voice stats (per guild)."),
+            ("/sync", "Force slash-command sync (Admin only)."),
+            ("/delete_channel", "Danger: remove all channels/categories."),
+            ("/delete_roles", "Danger: remove custom roles below the bot."),
+        ],
+    },
+    "moderation": {
+        "label": "Moderation & Safety",
+        "emoji": "🛡️",
+        "description": "Core moderation commands handled by the bot.",
+        "commands": [
+            ("/kick", "Kick a member with optional reason."),
+            ("/ban", "Ban + optionally prune recent messages."),
+            ("/unban", "Remove a ban via user ID."),
+            ("/timeout", "Timeout a member for a duration."),
+            ("/untimeout", "Clear any active timeout."),
+            ("/warn", "Issue a warning with a reason."),
+            ("/warnings", "List warnings for a member."),
+            ("/clearwarnings", "Remove all warnings for a member."),
+            ("/purge", "Bulk-delete a number of messages."),
+            ("/slowmode", "Set channel slowmode seconds."),
+            ("/modlog", "Configure the moderation log channel."),
+        ],
+    },
+    "tickets": {
+        "label": "Tickets & Modmail",
+        "emoji": "🎫",
+        "description": "Support workflows for tickets and inboxes.",
+        "commands": [
+            ("/ticket", "Create a ticket channel for a category."),
+            ("/ticket_close", "Close a ticket with optional reason."),
+            ("/ticket_setup", "Post/setup the ticket panel."),
+            ("/modmail_reply", "Reply to an active modmail thread."),
+            ("/modmail_close", "Close the current modmail thread."),
+            ("/modmail_contact", "Start a modmail with a member."),
+        ],
+    },
+    "verification": {
+        "label": "Verification & Rules",
+        "emoji": "✅",
+        "description": "Keep onboarding tidy with buttons + dropdowns.",
+        "commands": [
+            ("/verify", "Post the verification panel."),
+            ("/verify_setup", "Owner/admin setup for roles + banners."),
+            ("/verify_post", "Send verify panel to a channel."),
+            ("/verify_role", "Pick verified/unverified roles."),
+            ("/rules", "Post rules panel with dropdown selector."),
+            ("/rules_setup", "Configure rules text, banners, and colors."),
+        ],
+    },
+    "giveaways": {
+        "label": "Giveaways",
+        "emoji": "🎉",
+        "description": "Schedule, draw, and archive giveaways.",
+        "commands": [
+            ("/giveaway_start", "Start a giveaway (duration, winners, prize)."),
+            ("/giveaway_end", "Force-end a giveaway and show transcript."),
+        ],
+    },
+    "custom_roles": {
+        "label": "Custom Commands & Roles",
+        "emoji": "🎭",
+        "description": "Flexible automations for text triggers and roles.",
+        "commands": [
+            ("/customcmd_create", "Add a custom command response."),
+            ("/customcmd_edit", "Update an existing custom command."),
+            ("/customcmd_delete", "Remove a custom command."),
+            ("/customcmd_list", "List all custom commands."),
+            ("/customcmd_info", "Inspect a specific custom command."),
+            ("/reactionrole_create", "Create a reaction-role panel."),
+            ("/reactionrole_add", "Add a role/emoji to a panel."),
+            ("/reactionrole_remove", "Remove a role/emoji from a panel."),
+            ("/reactionrole_list", "List configured reaction-role panels."),
+        ],
+    },
+    "logging": {
+        "label": "Logging & Extras",
+        "emoji": "📜",
+        "description": "Track changes and keep history tidy.",
+        "commands": [
+            ("/changelog_start", "Start logging changes into a channel."),
+            ("/changelog_stop", "Stop change logging."),
+        ],
+    },
+}
+
+
+def _format_command_list(command_pairs):
+    return "\n".join(f"- `{name}` — {desc}" for name, desc in command_pairs)
+
+
+class SetupModulesActionView(discord.ui.View):
+    """Interactive helper to show per-module command lists."""
+
+    def __init__(self, author_id: int):
+        super().__init__(timeout=240)
+        self.author_id = author_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Only the user who opened /setup_dashboard can use these buttons.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def _send_group_embed(self, interaction: discord.Interaction, group_key: str):
+        group = SETUP_COMMAND_GROUPS[group_key]
+        embed = discord.Embed(
+            title=f"{group['emoji']} {group['label']}",
+            description=group["description"],
+            color=EMBED_COLOR,
+        )
+        embed.add_field(name="Commands", value=_format_command_list(group["commands"]), inline=False)
+        embed.set_footer(text="Run these slash commands directly in Discord to configure the module.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _send_all_commands(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Full Command Reference",
+            description="Every major Channel Manager slash command grouped by module.",
+            color=EMBED_COLOR,
+        )
+        for group in SETUP_COMMAND_GROUPS.values():
+            embed.add_field(
+                name=f"{group['emoji']} {group['label']}",
+                value=_format_command_list(group["commands"]),
+                inline=False,
+            )
+        embed.set_footer(text="Use /help for text import snippets any time.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Server Setup", style=discord.ButtonStyle.secondary, custom_id="setup_cmd_server")
+    async def server_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "server")
+
+    @discord.ui.button(label="Moderation", style=discord.ButtonStyle.secondary, custom_id="setup_cmd_moderation")
+    async def moderation_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "moderation")
+
+    @discord.ui.button(label="Verify & Rules", style=discord.ButtonStyle.secondary, custom_id="setup_cmd_verify")
+    async def verification_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "verification")
+
+    @discord.ui.button(label="Giveaways", style=discord.ButtonStyle.secondary, custom_id="setup_cmd_giveaways")
+    async def giveaways_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "giveaways")
+
+    @discord.ui.button(label="Tickets & Modmail", style=discord.ButtonStyle.secondary, row=1, custom_id="setup_cmd_tickets")
+    async def tickets_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "tickets")
+
+    @discord.ui.button(label="Custom Cmds & Roles", style=discord.ButtonStyle.secondary, row=1, custom_id="setup_cmd_custom")
+    async def custom_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "custom_roles")
+
+    @discord.ui.button(label="Logging & Extras", style=discord.ButtonStyle.secondary, row=1, custom_id="setup_cmd_logging")
+    async def logging_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_group_embed(interaction, "logging")
+
+    @discord.ui.button(label="All Commands", style=discord.ButtonStyle.success, row=2, custom_id="setup_cmd_all")
+    async def all_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._send_all_commands(interaction)
+
+
 class SetupDashboardView(discord.ui.View):
     """Buttons for the /setup_dashboard command."""
 
@@ -661,8 +835,8 @@ class SetupDashboardView(discord.ui.View):
         embed = discord.Embed(
             title="Setup Modules Overview",
             description=(
-                "Preview the giveaway setup, text import, and other dashboard modules. "
-                "Use this list before applying a template or importing channels."
+                "Preview giveaway setup, text import, rules, verification, and tickets. "
+                "Use the buttons below to open an in-Discord command reference for every module."
             ),
             color=EMBED_COLOR,
         )
@@ -670,7 +844,7 @@ class SetupDashboardView(discord.ui.View):
         embed.add_field(
             name="Giveaway Setup",
             value=(
-                "- `/giveaway_start`, `/giveaway_end`, `/giveaway_reroll`\n"
+                "- `/giveaway_start` and `/giveaway_end`\n"
                 "- Dashboard timers, prize pools, and transcripts\n"
                 "- Works with template buttons for seasonal drops"
             ),
@@ -713,7 +887,11 @@ class SetupDashboardView(discord.ui.View):
                 "Only the user who opened /setup_dashboard can view this panel.", ephemeral=True
             )
             return
-        await interaction.response.send_message(embed=self._build_modules_embed(), ephemeral=True)
+        await interaction.response.send_message(
+            embed=self._build_modules_embed(),
+            view=SetupModulesActionView(self.author_id),
+            ephemeral=True,
+        )
 
 
 @bot.tree.command(name="setup_dashboard", description="Load a prebuilt server template (customize via dashboard).")
