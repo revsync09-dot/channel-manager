@@ -131,17 +131,11 @@ copy .env.example .env
 **Important:** Update `.env` with:
 - Your Discord bot token
 - OAuth client ID and secret
-- Production domain (default: `https://jthweb.yugp.me`)
+- Production domain (default: `https://jthweb.yugp.me:6767`)
 
 4. **Run the bot**
 
-**Recommended: Start everything together (Windows)**
-```powershell
-# Ensure you edited your .env or copied .env.example
-./run.ps1
-```
-
-Or run with Python directly (cross-platform):
+**Recommended: Start everything together**
 ```bash
 python app.py
 ```
@@ -156,18 +150,18 @@ This will start both:
 python -m src.bot
 
 # Terminal 2 - Dashboard
-python -m src.web.dashboard
+python run_dashboard.py
 ```
 
 5. **First Time Setup**
 - Invite the bot to your server (use dashboard invite button)
-- Run `/setup` in Discord to see template options
+- Run `/setup_dashboard` in Discord to open the dashboard and module overview button
 - Visit the dashboard to configure your server
 - Apply a template or customize manually
 
 6. **Access dashboard**
 ```
-Production: https://jthweb.yugp.me
+Production: https://jthweb.yugp.me:6767
 Local: http://localhost:6767
 ```
 
@@ -180,13 +174,11 @@ Local: http://localhost:6767
 ```env
 # Discord Bot
 DISCORD_TOKEN=your_bot_token
-# Alternative env name used by some parts of the dashboard (the dashboard will fall back to DISCORD_TOKEN if not set)
-DISCORD_BOT_TOKEN=your_bot_token
 
 # Dashboard OAuth
 DISCORD_CLIENT_ID=your_client_id
 DISCORD_CLIENT_SECRET=your_client_secret
-DISCORD_REDIRECT_URI=https://jthweb.yugp.me/callback
+DISCORD_REDIRECT_URI=https://jthweb.yugp.me:6767/callback
 
 # Security
 FLASK_SECRET_KEY=random_secret_key
@@ -197,7 +189,7 @@ FLASK_SECRET_KEY=random_secret_key
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Select your application
 3. Go to **OAuth2** section
-4. Add redirect URL: `https://jthweb.yugp.me/callback`
+4. Add redirect URL: `https://jthweb.yugp.me:6767/callback`
 5. Copy Client ID and Client Secret
 6. Add to `.env` file
 
@@ -206,7 +198,7 @@ FLASK_SECRET_KEY=random_secret_key
 ## 📚 Commands
 
 ### Server Building
-- `/setup` - Open server builder panel
+- `/setup_dashboard` - Open server builder panel and module overview button
 - `/delete_channel` - Delete all channels
 - `/delete_roles` - Delete all roles
 - `/health` - Bot status and health check
