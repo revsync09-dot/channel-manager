@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import math
 import os
@@ -105,6 +105,79 @@ STATS_EMBED_COLOR = 0x2F3136
 QUICKCHART_CREATE_URL = "https://quickchart.io/chart/create"
 STAT_WINDOW_DAYS = 30
 
+
+def _dashboard_template(name: str) -> dict[str, Any]:
+    """Return a built-in dashboard template matching the frontend presets."""
+    staff_roles = [
+        {"name": "👑 Admin", "color": 0xF04747, "permissions": 8, "hoist": True, "mentionable": False},
+        {"name": "🛡️ Moderator", "color": 0x5865F2, "permissions": 0, "hoist": True, "mentionable": True},
+        {"name": "✅ Verified", "color": 0x43B581, "permissions": 0, "hoist": False, "mentionable": True},
+    ]
+    templates = {
+        "gaming": {
+            "roles": staff_roles + [{"name": "🎮 Gamer", "color": 0x00FF88, "permissions": 0}],
+            "categories": [
+                {"name": "📣 ANNOUNCEMENTS", "channels": [{"name": "📢-news", "type": "text", "topic": "Server updates"}, {"name": "🎉-events", "type": "text", "topic": "Giveaways and tournaments"}]},
+                {"name": "💬 LOBBY", "channels": [{"name": "👋-welcome", "type": "text", "topic": "Introduce yourself"}, {"name": "💭-chat", "type": "text", "topic": "General chat"}, {"name": "🔊 Squad 1", "type": "voice"}]},
+                {"name": "🎮 GAMES", "channels": [{"name": "🥇-ranked", "type": "text", "topic": "Ranked coordination"}, {"name": "🤝-lfg", "type": "text", "topic": "Find teammates"}, {"name": "🎧 Game Chat", "type": "voice"}]},
+            ],
+        },
+        "community": {
+            "roles": staff_roles + [{"name": "🎭 Member", "color": 0x99AAB5, "permissions": 0}],
+            "categories": [
+                {"name": "📣 INFO", "channels": [{"name": "📢-announcements", "type": "text"}, {"name": "📜-rules", "type": "text"}]},
+                {"name": "💬 COMMUNITY", "channels": [{"name": "general", "type": "text", "topic": "Chat with everyone"}, {"name": "media-share", "type": "text", "topic": "Images and clips"}, {"name": "Lounge", "type": "voice"}]},
+                {"name": "🎉 EVENTS", "channels": [{"name": "giveaways", "type": "text"}, {"name": "polls", "type": "text"}]},
+            ],
+        },
+        "support": {
+            "roles": staff_roles + [{"name": "🙋 Customer", "color": 0xFFB347, "permissions": 0}],
+            "categories": [
+                {"name": "ℹ️ START HERE", "channels": [{"name": "welcome", "type": "text"}, {"name": "faq", "type": "text", "topic": "Common questions"}]},
+                {"name": "🎟️ SUPPORT", "channels": [{"name": "create-ticket", "type": "text", "topic": "Open support tickets"}, {"name": "transcripts", "type": "text", "topic": "Closed ticket logs"}, {"name": "Support VC", "type": "voice"}]},
+                {"name": "📚 KNOWLEDGE BASE", "channels": [{"name": "guides", "type": "text"}, {"name": "updates", "type": "text"}]},
+            ],
+        },
+        "creative": {
+            "roles": staff_roles + [{"name": "🎨 Creator", "color": 0xE67E22, "permissions": 0}],
+            "categories": [
+                {"name": "📣 NEWS", "channels": [{"name": "announcements", "type": "text"}, {"name": "roadmap", "type": "text"}]},
+                {"name": "🖼️ SHOWCASE", "channels": [{"name": "art-drop", "type": "text", "topic": "Share art"}, {"name": "critiques", "type": "text", "topic": "Get feedback"}, {"name": "Studio", "type": "voice"}]},
+                {"name": "💡 COLLAB", "channels": [{"name": "ideas", "type": "text"}, {"name": "work-in-progress", "type": "text"}]},
+            ],
+        },
+    }
+    return templates.get(name) or templates["community"]
+
+
+def _build_embed_from_payload(payload: Dict[str, Any]) -> discord.Embed:
+    """Build a discord.Embed from dashboard payload safely."""
+    color_raw = payload.get("color", 0x5865F2)
+    try:
+        color = discord.Color(int(color_raw))
+    except Exception:
+        color = discord.Color(0x5865F2)
+    embed = discord.Embed(
+        title=payload.get("title") or None,
+        description=payload.get("description") or None,
+        color=color,
+    )
+    if payload.get("timestamp"):
+        embed.timestamp = discord.utils.utcnow()
+    author = payload.get("author") or {}
+    if author.get("name"):
+        embed.set_author(name=author.get("name"), icon_url=author.get("icon_url") or discord.Embed.Empty)
+    thumb_url = (payload.get("thumbnail") or {}).get("url") if isinstance(payload.get("thumbnail"), dict) else payload.get("thumbnail")
+    if thumb_url:
+        embed.set_thumbnail(url=thumb_url)
+    image_url = (payload.get("image") or {}).get("url") if isinstance(payload.get("image"), dict) else payload.get("image")
+    if image_url:
+        embed.set_image(url=image_url)
+    footer = payload.get("footer") or {}
+    if footer.get("text") or footer.get("icon_url"):
+        embed.set_footer(text=footer.get("text") or discord.Embed.Empty, icon_url=footer.get("icon_url") or discord.Embed.Empty)
+    return embed
+
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
@@ -151,7 +224,7 @@ async def process_pending_setups():
                         milestones = [int(m.strip()) for m in milestones_str.split(',')]
                         
                         # Import leveling module functions
-                        from modules.leveling import create_leveling_roles, create_leveling_info_channel, create_rules_info_channel
+                        from .modules.leveling import create_leveling_roles, create_leveling_info_channel, create_rules_info_channel
                         
                         # Create roles
                         await create_leveling_roles(guild, milestones, bot.leveling, bot)
@@ -170,6 +243,26 @@ async def process_pending_setups():
                     except Exception as e:
                         print(f"❌ Error processing leveling setup for guild {guild_id}: {e}")
                         # Mark as processed to avoid infinite retries
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+
+                elif setup_type == 'template':
+                    try:
+                        template_data: dict[str, Any] | None = None
+                        if data:
+                            stripped = data.strip()
+                            if stripped.startswith('{') or stripped.startswith('['):
+                                template_data = json.loads(stripped)
+                            else:
+                                template_data = _dashboard_template(stripped)
+                        if not template_data:
+                            raise ValueError("Template data missing or invalid")
+
+                        await build_server_from_template(guild, template_data)
+                        print(f"✅ Applied template for guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error applying template for guild {guild_id}: {e}")
+                    finally:
                         cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
                         conn.commit()
                 
@@ -246,7 +339,7 @@ async def process_pending_setups():
                         category_id = int(parts[1]) if len(parts) > 1 and parts[1] else None
                         
                         if panel_channel_id:
-                            from modules.ticket_system import send_ticket_panel_to_channel
+                            from .modules.ticket_system import send_ticket_panel_to_channel
                             channel = guild.get_channel(panel_channel_id)
                             if channel:
                                 # Send ticket panel
@@ -265,6 +358,86 @@ async def process_pending_setups():
                         print(f"❌ Error setting up tickets for guild {guild_id}: {e}")
                         cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
                         conn.commit()
+
+                elif setup_type == 'send_embed':
+                    try:
+                        payload = json.loads(data or "{}") if isinstance(data, str) else data or {}
+                        channel_id = int(payload.get("channel_id")) if payload.get("channel_id") else None
+                        embed_payload = payload.get("embed") or {}
+                        if not channel_id:
+                            raise ValueError("channel_id missing")
+                        channel = guild.get_channel(channel_id)
+                        if channel is None:
+                            try:
+                                channel = await guild.fetch_channel(channel_id)
+                            except Exception:
+                                channel = None
+                        if channel is None:
+                            raise ValueError(f"Channel {channel_id} not found")
+                        embed = _build_embed_from_payload(embed_payload)
+                        await channel.send(embed=embed)
+                        print(f"✅ Sent queued embed to guild {guild_id} channel {channel_id}")
+                    except Exception as e:
+                        print(f"❌ Error sending embed for guild {guild_id}: {e}")
+                    finally:
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+
+                elif setup_type == 'announcement':
+                    try:
+                        payload = json.loads(data or "{}") if isinstance(data, str) else data or {}
+                        channel_id = int(payload.get("channel_id")) if payload.get("channel_id") else None
+                        if not channel_id:
+                            raise ValueError("channel_id missing")
+                        content = payload.get("content") or ""
+                        mention_everyone = bool(payload.get("mention_everyone"))
+                        channel = guild.get_channel(channel_id)
+                        if channel is None:
+                            try:
+                                channel = await guild.fetch_channel(channel_id)
+                            except Exception:
+                                channel = None
+                        if channel is None:
+                            raise ValueError(f"Channel {channel_id} not found")
+                        prefix = "@everyone " if mention_everyone else ""
+                        await channel.send(content=f"{prefix}{content}".strip())
+                        print(f"✅ Sent queued announcement to guild {guild_id} channel {channel_id}")
+                    except Exception as e:
+                        print(f"❌ Error sending announcement for guild {guild_id}: {e}")
+                    finally:
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+
+                elif setup_type == 'giveaway':
+                    try:
+                        payload = json.loads(data or "{}") if isinstance(data, str) else data or {}
+                        channel_id = int(payload.get("channel_id")) if payload.get("channel_id") else None
+                        prize = payload.get("prize") or "Giveaway"
+                        duration_minutes = int(payload.get("duration_minutes") or 1)
+                        description = payload.get("description") or "Join the giveaway!"
+                        winner_count = int(payload.get("winner_count") or 1)
+                        if not channel_id:
+                            raise ValueError("channel_id missing")
+                        channel = guild.get_channel(channel_id)
+                        if channel is None:
+                            try:
+                                channel = await guild.fetch_channel(channel_id)
+                            except Exception:
+                                channel = None
+                        if channel is None:
+                            raise ValueError(f"Channel {channel_id} not found")
+                        message_id = await start_giveaway(channel, guild_id, prize, duration_minutes, description, winner_count)
+                        print(f"✅ Started giveaway {message_id} in guild {guild_id}")
+                    except Exception as e:
+                        print(f"❌ Error creating giveaway for guild {guild_id}: {e}")
+                    finally:
+                        cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                        conn.commit()
+
+                else:
+                    # Unknown request type; mark as processed to avoid infinite loop
+                    cursor.execute("UPDATE pending_setup_requests SET processed = 1 WHERE id = ?", (request_id,))
+                    conn.commit()
             
             conn.close()
         except Exception as e:
