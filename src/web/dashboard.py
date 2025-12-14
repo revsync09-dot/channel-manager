@@ -13,6 +13,7 @@ from functools import wraps
 import json
 import secrets
 import urllib.parse
+from typing import Dict, Tuple, Optional
 
 # Add parent directory to path for imports (when run as a script)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -53,6 +54,10 @@ DISCORD_OAUTH_URL = (
     f"https://discord.com/api/oauth2/authorize?client_id={DISCORD_CLIENT_ID}"
     f"&redirect_uri={_encoded_redirect}&response_type=code&scope=identify+guilds"
 )
+
+# Simple in-process cache to avoid flapping presence checks and API spam
+_BOT_GUILD_CACHE: Dict[str, Tuple[float, list, Optional[str]]] = {}
+_BOT_GUILD_TTL_SECONDS = 30
 
 
 def validate_oauth_env():
@@ -187,18 +192,29 @@ def get_bot_guilds(bot_token):
 
 
 def get_bot_guilds_with_reason(bot_token):
-    """Return bot guilds and an optional reason string for failure."""
-    if not bot_token:
-        bot_token = os.getenv('DISCORD_TOKEN')
-    if not bot_token:
+    """Return bot guilds and an optional reason string for failure with short TTL cache."""
+    token = bot_token or os.getenv('DISCORD_TOKEN')
+    if not token:
         return [], 'missing-token'
-    headers = {"Authorization": f"Bot {bot_token}"}
+
+    now = time.time()
+    cached = _BOT_GUILD_CACHE.get(token)
+    if cached and (now - cached[0]) < _BOT_GUILD_TTL_SECONDS:
+        return cached[1], cached[2]
+
+    headers = {"Authorization": f"Bot {token}"}
     response = requests.get(f"{DISCORD_API_BASE}/users/@me/guilds", headers=headers)
+    guilds: list = []
+    reason: Optional[str] = None
     if response.status_code == 200:
-        return response.json(), None
-    if response.status_code == 401:
-        return [], 'unauthorized-token'
-    return [], f'http-{response.status_code}'
+        guilds = response.json()
+    elif response.status_code == 401:
+        reason = 'unauthorized-token'
+    else:
+        reason = f'http-{response.status_code}'
+
+    _BOT_GUILD_CACHE[token] = (now, guilds, reason)
+    return guilds, reason
 
 
 def get_bot_token():
@@ -385,7 +401,7 @@ def api_custom_commands(guild_id):
         data = request.json
         name = data.get('name')
         response = data.get('response')
-        embed = data.get('embed', False)
+        embed = data.get('embed', data.get('is_embed', False))
         
         if not name or not response:
             return jsonify({"error": "Missing name or response"}), 400
@@ -396,12 +412,22 @@ def api_custom_commands(guild_id):
         return jsonify({"success": True})
     
     elif request.method == 'DELETE':
-        name = request.args.get('name')
+        name = request.args.get('name') or (request.json.get('name') if request.is_json else None)
         if not name:
             return jsonify({"error": "Missing name"}), 400
-        
+
         success = db.delete_custom_command(guild_id, name)
         return jsonify({"success": success})
+
+
+@app.route('/api/guild/<int:guild_id>/commands/<string:name>', methods=['DELETE'])
+@login_required
+def api_delete_custom_command(guild_id, name):
+    """Path-based delete endpoint to match frontend calls"""
+    if not _has_guild_access(guild_id):
+        return jsonify({"error": "Unauthorized or session expired. Ensure you're signed in and have Manage Server or Administrator permissions."}), 403
+    success = db.delete_custom_command(guild_id, name)
+    return jsonify({"success": success})
 
 
 @app.route('/api/user/guilds')
@@ -436,10 +462,28 @@ def api_send_embed(guild_id):
     if not channel_id or not embed_data:
         return jsonify({"error": "Missing channel_id or embed"}), 400
     
-    # Store the embed request in database for bot to process
-    # Or use a webhook/API to send directly
-    # For now, return success (bot implementation needed)
-    return jsonify({"success": True, "message": "Embed sent successfully"})
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    if reason in ('missing-token', 'unauthorized-token'):
+        return jsonify({"error": "Bot token not configured or invalid. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN."}), 500
+    if not bot_guilds or not any(int(g.get('id')) == guild_id for g in (bot_guilds or [])):
+        return jsonify({"error": "Bot not present in this server. Invite the bot first."}), 400
+
+    # Queue the embed for the bot to send
+    try:
+        payload = {"channel_id": int(channel_id), "embed": embed_data}
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
+            VALUES (?, 'send_embed', ?, datetime('now'))
+            """,
+            (guild_id, json.dumps(payload))
+        )
+        db.conn.commit()
+        return jsonify({"success": True, "message": "Embed queued for delivery", "request_id": cur.lastrowid})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue embed: {e}"}), 500
 
 
 @app.route('/api/guild/<int:guild_id>/announcement', methods=['POST'])
@@ -459,8 +503,32 @@ def api_send_announcement(guild_id):
     if not channel_id or not content:
         return jsonify({"error": "Missing channel_id or content"}), 400
     
-    # Store announcement request for bot to process
-    return jsonify({"success": True, "message": "Announcement sent successfully"})
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    if reason in ('missing-token', 'unauthorized-token'):
+        return jsonify({"error": "Bot token not configured or invalid. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN."}), 500
+    if not bot_guilds or not any(int(g.get('id')) == guild_id for g in (bot_guilds or [])):
+        return jsonify({"error": "Bot not present in this server. Invite the bot first."}), 400
+
+    try:
+        payload = {
+            "channel_id": int(channel_id),
+            "content": content,
+            "type": announcement_type,
+            "mention_everyone": bool(mention_everyone),
+        }
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
+            VALUES (?, 'announcement', ?, datetime('now'))
+            """,
+            (guild_id, json.dumps(payload))
+        )
+        db.conn.commit()
+        return jsonify({"success": True, "message": "Announcement queued for delivery", "request_id": cur.lastrowid})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue announcement: {e}"}), 500
 
 
 @app.route('/api/guild/<int:guild_id>/roles', methods=['POST'])
@@ -495,8 +563,24 @@ def api_create_bulk_roles(guild_id):
     if not role_names:
         return jsonify({"error": "No role names provided"}), 400
     
-    # Store bulk role creation request for bot to process
-    return jsonify({"success": True, "created": len(role_names)})
+    # Store bulk role creation requests for bot to process
+    try:
+        cur = db.conn.cursor()
+        request_ids = []
+        for role_name in role_names:
+            cur.execute(
+                """
+                INSERT INTO pending_setup_requests 
+                (guild_id, setup_type, data, created_at)
+                VALUES (?, 'create_role', ?, datetime('now'))
+                """,
+                (guild_id, f"{role_name}|{0x99AAB5}|False|True|")
+            )
+            request_ids.append(cur.lastrowid)
+        db.conn.commit()
+        return jsonify({"success": True, "created": len(role_names), "request_ids": request_ids})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue roles: {e}"}), 500
 
 
 @app.route('/api/guild/<int:guild_id>/template', methods=['POST'])
@@ -668,9 +752,17 @@ def api_bot_presence(guild_id):
         return jsonify({"error": "Unauthorized or session expired."}), 403
 
     bot_token = get_bot_token()
+    # Allow optional cache bypass: /bot-presence?refresh=1
+    if request.args.get('refresh'):
+        _BOT_GUILD_CACHE.pop(bot_token or '', None)
+
     bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
     present = any(int(g.get('id')) == guild_id for g in (bot_guilds or []))
-    return jsonify({"present": present, "reason": reason})
+    return jsonify({
+        "present": present,
+        "reason": reason,
+        "guild_count": len(bot_guilds or []),
+    })
 
 
 @app.route('/api/guild/<int:guild_id>/leveling-setup', methods=['POST'])
@@ -743,10 +835,34 @@ def api_create_giveaway(guild_id):
     
     if not all([channel_id, prize, duration]):
         return jsonify({"error": "Missing required fields"}), 400
-    
-    # Store giveaway creation request for bot to process
-    # In a full implementation, this would trigger the bot via IPC or database
-    return jsonify({"success": True, "message": "Giveaway created successfully"})
+
+    bot_token = get_bot_token()
+    bot_guilds, reason = get_bot_guilds_with_reason(bot_token)
+    if reason in ('missing-token', 'unauthorized-token'):
+        return jsonify({"error": "Bot token not configured or invalid. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN."}), 500
+    if not bot_guilds or not any(int(g.get('id')) == guild_id for g in (bot_guilds or [])):
+        return jsonify({"error": "Bot not present in this server. Invite the bot first."}), 400
+
+    try:
+        payload = {
+            "channel_id": int(channel_id),
+            "prize": prize,
+            "duration_minutes": int(duration),
+            "winner_count": int(winners or 1),
+            "description": description or ''
+        }
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pending_setup_requests (guild_id, setup_type, data, created_at)
+            VALUES (?, 'giveaway', ?, datetime('now'))
+            """,
+            (guild_id, json.dumps(payload))
+        )
+        db.conn.commit()
+        return jsonify({"success": True, "message": "Giveaway queued for creation", "request_id": cur.lastrowid})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue giveaway: {e}"}), 500
 
 
 @app.route('/api/guild/<int:guild_id>/roles', methods=['GET', 'POST', 'DELETE'])
@@ -810,7 +926,8 @@ def api_manage_roles(guild_id):
         
         # Store role creation request for bot to process
         try:
-            db.conn.execute("""
+            cur = db.conn.cursor()
+            cur.execute("""
                 INSERT INTO pending_setup_requests 
                 (guild_id, setup_type, data, created_at)
                 VALUES (?, 'create_role', ?, datetime('now'))
@@ -819,7 +936,8 @@ def api_manage_roles(guild_id):
             
             return jsonify({
                 "success": True, 
-                "message": f"Role '{name}' creation queued"
+                "message": f"Role '{name}' creation queued",
+                "request_id": cur.lastrowid
             })
         except Exception as e:
             return jsonify({"error": f"Failed to create role: {str(e)}"}), 500
