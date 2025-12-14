@@ -41,7 +41,7 @@ document.getElementById('create-command-form')?.addEventListener('submit', async
         const res = await fetch(`/api/guild/${guildId}/commands`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, response, is_embed: isEmbed })
+            body: JSON.stringify({ name, response, embed: isEmbed })
         });
         
         if (res.ok) {
@@ -60,9 +60,7 @@ async function deleteCommand(name) {
     if (!confirm(`Delete command "${name}"?`)) return;
     
     try {
-        const res = await fetch(`/api/guild/${guildId}/commands/${name}`, {
-            method: 'DELETE'
-        });
+        const res = await fetch(`/api/guild/${guildId}/commands?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
         
         if (res.ok) {
             showNotification('Command deleted successfully!', 'success');
@@ -638,10 +636,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     })();
+
+    const recheckButton = document.getElementById('recheck-bot');
+    if (recheckButton) {
+        recheckButton.addEventListener('click', async () => {
+            try {
+                const res = await fetch(`/api/guild/${guildId}/bot-presence?refresh=1`);
+                if (!res.ok) {
+                    showNotification('Failed to recheck bot status', 'error');
+                    return;
+                }
+                const data = await res.json();
+                updateBotStatusUI(data.present, data.reason, data.guild_count);
+                if (!data.present && data.reason) {
+                    let msg = 'Bot not present';
+                    if (data.reason === 'missing-token') msg = 'Dashboard not configured with bot token (DISCORD_BOT_TOKEN missing)';
+                    if (data.reason === 'unauthorized-token') msg = 'Bot token invalid or unauthorized';
+                    if (data.reason && data.reason.startsWith('http-')) msg = `Bot token check returned ${data.reason}`;
+                    showNotification(msg, 'warning');
+                }
+            } catch (err) {
+                console.error('Bot recheck failed', err);
+                showNotification('Bot recheck failed', 'error');
+            }
+        });
+    }
 });
 
+function updateBotStatusUI(present, reason, guildCount) {
+    const pill = document.getElementById('bot-status-pill');
+    const reasonEl = document.getElementById('bot-status-reason');
+    if (!pill || !reasonEl) return;
+
+    if (present) {
+        pill.className = 'inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300';
+        pill.innerHTML = '<span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span> Bot Present';
+        reasonEl.textContent = guildCount ? `Bot connected to ${guildCount} server(s).` : '';
+    } else {
+        pill.className = 'inline-flex items-center gap-2 rounded-full bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-300';
+        pill.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-400"></span> Bot Not Present';
+        if (reason === 'missing-token') reasonEl.textContent = 'Dashboard bot token is not configured. Set DISCORD_BOT_TOKEN or DISCORD_TOKEN in .env.';
+        else if (reason === 'unauthorized-token') reasonEl.textContent = 'Bot token configured is unauthorized/invalid.';
+        else if (reason && reason.startsWith('http-')) reasonEl.textContent = `Bot token check returned ${reason}.`;
+        else reasonEl.textContent = 'Bot presence could not be verified.';
+    }
+}
+
 function openCustomSetup() {
-    showNotification('Custom setup coming soon!', 'info');
+    switchSection('setup');
+    const area = document.getElementById('channel-structure');
+    if (area) {
+        area.focus();
+        area.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    showNotification('Paste your layout in "Channel Structure" and preview/apply it.', 'info');
 }
 
 // Moderation Settings
@@ -954,6 +1002,16 @@ function waitForRequestCompletion(requestId, timeoutMs = 60000) {
 }
 
 // Utility Functions
+const _origFetch = window.fetch;
+window.fetch = async (...args) => {
+    const res = await _origFetch(...args);
+    if (res && (res.status === 401 || res.status === 403)) {
+        showNotification('Session expired or unauthorized. Please log back in.', 'warning');
+        setTimeout(() => { window.location.href = '/login'; }, 600);
+    }
+    return res;
+};
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
