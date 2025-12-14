@@ -22,7 +22,7 @@
         }
     </script>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-[#0d0f12] via-[#0f172a] to-[#0b1020] text-slate-100">
+<body class="min-h-screen bg-gradient-to-br from-[#0d0f12] via-[#0f172a] to-[#0b1020] text-slate-100" data-guild-id="{{ guild.id }}" data-bot-present="{{ config.get('bot_present') }}">
     <div class="flex min-h-screen">
         <aside class="w-72 flex-shrink-0 border-r border-white/5 bg-white/5 px-4 py-6 backdrop-blur">
             {% set logo_webp = url_for('static', filename='assets/logo.webp') %}
@@ -94,30 +94,31 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
-                    {% if config.bot_present %}
-                    <span class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300">
-                        <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
-                        Bot Present
-                    </span>
-                    {% else %}
-                    <span class="inline-flex items-center gap-2 rounded-full bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-300">
-                        <span class="h-2 w-2 rounded-full bg-red-400"></span>
-                        Bot Not Present
-                    </span>
-                    {% if config.bot_present_reason %}
-                    <div class="text-xs text-slate-400 mt-1">
-                        {% if config.bot_present_reason == 'missing-token' %}
-                            Dashboard bot token is not configured. Set `DISCORD_BOT_TOKEN` or `DISCORD_TOKEN` in .env.
-                        {% elif config.bot_present_reason == 'unauthorized-token' %}
-                            The bot token configured is unauthorized/invalid. Verify `DISCORD_BOT_TOKEN` matches your bot token.
-                        {% elif config.bot_present_reason.startswith('http-') %}
-                            Bot token check returned {{ config.bot_present_reason }}.
+                    <div class="flex flex-col gap-1">
+                        {% if config.bot_present %}
+                        <span id="bot-status-pill" class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300">
+                            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
+                            Bot Present
+                        </span>
                         {% else %}
-                            Bot presence couldn't be verified. Check logs.
+                        <span id="bot-status-pill" class="inline-flex items-center gap-2 rounded-full bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-300">
+                            <span class="h-2 w-2 rounded-full bg-red-400"></span>
+                            Bot Not Present
+                        </span>
                         {% endif %}
+                        <div id="bot-status-reason" class="text-xs text-slate-400">
+                            {% if config.bot_present_reason == 'missing-token' %}
+                                Dashboard bot token is not configured. Set `DISCORD_BOT_TOKEN` or `DISCORD_TOKEN` in .env.
+                            {% elif config.bot_present_reason == 'unauthorized-token' %}
+                                The bot token configured is unauthorized/invalid. Verify `DISCORD_BOT_TOKEN` matches your bot token.
+                            {% elif config.bot_present_reason and config.bot_present_reason.startswith('http-') %}
+                                Bot token check returned {{ config.bot_present_reason }}.
+                            {% elif not config.bot_present %}
+                                Bot presence couldn't be verified. Check logs.
+                            {% endif %}
+                        </div>
+                        <button id="recheck-bot" class="w-fit rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-indigo-500">Recheck Bot</button>
                     </div>
-                    {% endif %}
-                    {% endif %}
                     <div class="flex items-center gap-3 rounded-full border border-white/5 bg-white/5 px-3 py-2">
                         <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="{{ user.username }}" class="h-9 w-9 rounded-full border border-white/10">
                         <div>
@@ -865,8 +866,8 @@
     </div>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script>
-        const guildId = {{ guild.id | tojson }};
-        const botPresent = {{ config.get('bot_present') | tojson }};
+        const guildId = Number(document.body.dataset.guildId || '0');
+        const botPresent = (document.body.dataset.botPresent || '').toLowerCase() === 'true';
         updateEmbedPreview();
     </script>
 </body>
