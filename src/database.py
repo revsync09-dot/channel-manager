@@ -3,18 +3,29 @@ Database models for bot configuration and data storage.
 """
 import sqlite3
 import json
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 
 class Database:
-    def __init__(self, db_path: str = "bot_data.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None):
+        # Allow overriding DB path via environment for deployments
+        env_path = os.getenv("DB_PATH") or os.getenv("BOT_DB") or os.getenv("SQLITE_PATH")
+        self.db_path = db_path or env_path or "bot_data.db"
+        # Ensure directory exists
+        db_dir = Path(self.db_path).expanduser().resolve().parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+
+        # Keep a shared connection for components that expect db.conn
+        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
         self.init_database()
     
     def init_database(self):
         """Initialize database tables"""
-        conn = sqlite3.connect(self.db_path)
+        conn = getattr(self, "conn", None) or sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         # Guild configs
