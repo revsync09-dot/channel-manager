@@ -74,6 +74,7 @@ async def start_giveaway(
     prize: str,
     duration_minutes: int,
     description: str | None,
+    winner_count: int = 1,
 ) -> int:
     embed = discord.Embed(
         title="𝙎𝙀𝙍𝙑𝙀𝙍 𝙂𝙄𝙑𝙀𝘼𝙒𝘼𝙔",
@@ -82,6 +83,7 @@ async def start_giveaway(
     )
     embed.add_field(name="Prize", value=prize, inline=True)
     embed.add_field(name="Duration", value=f"{duration_minutes} minutes", inline=True)
+    embed.add_field(name="Winners", value=str(max(1, winner_count)), inline=True)
     embed.add_field(name="Entries", value="0", inline=True)
     embed.set_footer(text="Click Enter to participate")
 
@@ -101,6 +103,7 @@ async def start_giveaway(
         "channel_id": message.channel.id,
         "guild_id": guild_id,
         "entrants": set(),  # user ids
+        "winner_count": max(1, int(winner_count or 1)),
         "done": False,
     }
     _get_guild_giveaways(guild_id)[message.id] = giveaway_data
@@ -135,7 +138,8 @@ async def end_giveaway(guild_id: int, message_id: int, interaction: discord.Inte
         return
     giveaway["done"] = True
     entrants: List[int] = list(giveaway.get("entrants", []))
-    winner_id = random.choice(entrants) if entrants else None
+    winner_count = max(1, int(giveaway.get("winner_count", 1)))
+    winners: List[int] = random.sample(entrants, min(winner_count, len(entrants))) if entrants else []
 
     bot: discord.Client | None = STATE.bot
     channel = bot.get_channel(giveaway["channel_id"]) if bot else None
@@ -151,10 +155,11 @@ async def end_giveaway(guild_id: int, message_id: int, interaction: discord.Inte
     )
     embed.add_field(name="Prize", value=giveaway.get("prize", "N/A"), inline=True)
     embed.add_field(name="Entries", value=str(len(entrants)), inline=True)
-    embed.add_field(name="Winner", value=f"<@{winner_id}>" if winner_id else "No entries", inline=False)
+    winner_value = ", ".join(f"<@{w}>" for w in winners) if winners else "No entries"
+    embed.add_field(name="Winners", value=winner_value, inline=False)
     embed.add_field(name="Transcript", value="Attached HTML file", inline=False)
 
-    transcript = _build_transcript_html(giveaway, entrants, winner_id)
+    transcript = _build_transcript_html(giveaway, entrants, winners)
     file = discord.File(io.BytesIO(transcript.encode("utf-8")), filename="giveaway_transcript.html")
 
     if channel:
@@ -177,9 +182,9 @@ async def end_giveaway(guild_id: int, message_id: int, interaction: discord.Inte
     giveaways.pop(message_id, None)
 
 
-def _build_transcript_html(giveaway: Dict[str, Any], entrants: List[int], winner_id: int | None) -> str:
+def _build_transcript_html(giveaway: Dict[str, Any], entrants: List[int], winners: List[int]) -> str:
     entries_html = "".join([f"<li>{uid}</li>" for uid in entrants]) or "<li>No entries</li>"
-    winner_html = f"<p>Winner: {winner_id}</p>" if winner_id else "<p>No winner</p>"
+    winner_html = f"<p>Winners: {', '.join(str(w) for w in winners)}</p>" if winners else "<p>No winner</p>"
     return f"""
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Giveaway Transcript</title></head>
